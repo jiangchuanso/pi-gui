@@ -59,13 +59,12 @@ linux:
   vendor: pi-gui
   synopsis: Codex-style desktop app for the pi coding agent
   description: A native desktop interface for pi coding agent sessions, workspaces, and tools.
+  # Arch is selected per build with --x64/--arm64 (see the package:linux:x64 and
+  # package:linux:arm64 scripts). Declaring arch here would force every build to
+  # produce both, including cross-arch native rebuilds the CI runners cannot do.
   target:
-    - target: AppImage
-      arch:
-        - x64
-    - target: deb
-      arch:
-        - x64
+    - AppImage
+    - deb
 
 deb:
   artifactName: ${productName}_${version}_${arch}.${ext}

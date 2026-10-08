@@ -7,7 +7,27 @@ import { parseDocument } from "yaml";
 
 const PRODUCT_NAME = "pi-gui";
 const SCHEMA_VERSION = 1;
-const PLATFORMS = ["macos", "linux", "windows"];
+// macOS is intentionally excluded: this fork publishes Linux and Windows only.
+// Linux has one entry per architecture; electron-builder suffixes only the non-x64
+// update metadata file (latest-linux.yml vs latest-linux-arm64.yml).
+const PLATFORMS = ["linux", "linux-arm64", "windows"];
+
+function linuxPlatformSpec({ manifestName, updateManifest, appimage, deb }) {
+  return {
+    manifestName,
+    updateManifest,
+    primaryUpdateAsset: appimage,
+    updateAssets: [appimage, deb],
+    // AppImage embeds its blockmap in the file, so the Linux primary asset is the only
+    // update payload allowed to carry a blockMapSize without a sibling .blockmap file.
+    primaryAssetHasEmbeddedBlockmap: true,
+    files: [
+      { name: appimage, role: "appimage" },
+      { name: deb, role: "debian-package" },
+      { name: updateManifest, role: "update-manifest" },
+    ],
+  };
+}
 
 function platformSpec(platform, version) {
   const base = `${PRODUCT_NAME}-${version}`;
@@ -27,17 +47,19 @@ function platformSpec(platform, version) {
         ],
       };
     case "linux":
-      return {
+      return linuxPlatformSpec({
         manifestName: "release-manifest-linux.json",
         updateManifest: "latest-linux.yml",
-        primaryUpdateAsset: `${base}-x86_64.AppImage`,
-        updateAssets: [`${base}-x86_64.AppImage`, `${PRODUCT_NAME}_${version}_amd64.deb`],
-        files: [
-          { name: `${base}-x86_64.AppImage`, role: "appimage" },
-          { name: `${PRODUCT_NAME}_${version}_amd64.deb`, role: "debian-package" },
-          { name: "latest-linux.yml", role: "update-manifest" },
-        ],
-      };
+        appimage: `${base}-x86_64.AppImage`,
+        deb: `${PRODUCT_NAME}_${version}_amd64.deb`,
+      });
+    case "linux-arm64":
+      return linuxPlatformSpec({
+        manifestName: "release-manifest-linux-arm64.json",
+        updateManifest: "latest-linux-arm64.yml",
+        appimage: `${base}-arm64.AppImage`,
+        deb: `${PRODUCT_NAME}_${version}_arm64.deb`,
+      });
     case "windows":
       return {
         manifestName: "release-manifest-windows.json",
@@ -164,7 +186,7 @@ async function verifyUpdateManifest(inputDir, platform, version) {
           );
         }
       } else if (
-        platform !== "linux" ||
+        !spec.primaryAssetHasEmbeddedBlockmap ||
         entry.url !== spec.primaryUpdateAsset ||
         !Number.isSafeInteger(entry.blockMapSize) ||
         entry.blockMapSize <= 0 ||

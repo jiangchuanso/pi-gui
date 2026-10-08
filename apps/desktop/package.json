@@ -17,6 +17,8 @@
     "package": "pnpm run build && electron-builder --mac --publish never",
     "package:dir": "pnpm run build && electron-builder --mac --dir --publish never",
     "package:linux": "pnpm run build && node scripts/run-electron-builder.mjs --linux --publish never",
+    "package:linux:x64": "pnpm run build && node scripts/run-electron-builder.mjs --linux --x64 --publish never",
+    "package:linux:arm64": "pnpm run build && node scripts/run-electron-builder.mjs --linux --arm64 --publish never",
     "package:linux:dir": "pnpm run build && node scripts/run-electron-builder.mjs --linux --dir --publish never",
     "package:win": "pnpm run build && node scripts/package-windows.mjs --win --publish never --config.npmRebuild=false",
     "package:win:dir": "pnpm run build && node scripts/package-windows.mjs --win --dir --publish never --config.npmRebuild=false",

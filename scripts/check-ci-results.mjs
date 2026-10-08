@@ -5,10 +5,11 @@ export const requiredJobs = [
   "website-build",
   "desktop-core",
   "desktop-package-linux",
+  "desktop-package-linux-arm64",
   "desktop-package-windows",
 ];
 
-export const coreShardJobs = ["desktop-core-shards"];
+export const coreRunJobs = ["desktop-core-run"];
 
 export function checkCiResults(needs, expectedJobs = requiredJobs) {
   if (!needs || typeof needs !== "object" || Array.isArray(needs)) {
@@ -36,10 +37,10 @@ export function checkCiResults(needs, expectedJobs = requiredJobs) {
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
     const args = process.argv.slice(2);
-    if (args.length > 1 || (args.length === 1 && args[0] !== "--core-shards")) {
-      throw new Error("Usage: check-ci-results.mjs [--core-shards]");
+    if (args.length > 1 || (args.length === 1 && args[0] !== "--core-run")) {
+      throw new Error("Usage: check-ci-results.mjs [--core-run]");
     }
-    const expectedJobs = args.length ? coreShardJobs : requiredJobs;
+    const expectedJobs = args.length ? coreRunJobs : requiredJobs;
     const failures = checkCiResults(JSON.parse(process.env.CI_NEEDS ?? "null"), expectedJobs);
     if (failures.length) {
       console.error(failures.join("\n"));

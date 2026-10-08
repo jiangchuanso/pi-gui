@@ -83,6 +83,70 @@ test("rejects an already-published release", async () => {
   );
 });
 
+test("reports an authored replacement of a published release", async () => {
+  const result = await checkGithubReleaseState({
+    ...baseOptions,
+    replaceRelease: true,
+    fetchImpl: async () => jsonResponse(200, { id: 59, tag_name: baseOptions.tag, draft: false }),
+  });
+  assert.deepEqual(result, { state: "published", id: 59 });
+});
+
+test("reports an authored replacement of a leftover draft", async () => {
+  const result = await checkGithubReleaseState({
+    ...baseOptions,
+    replaceRelease: true,
+    fetchImpl: sequenceFetch(
+      jsonResponse(404, { message: "Not Found" }),
+      jsonResponse(200, [{ id: 59, tag_name: baseOptions.tag, draft: true }]),
+    ),
+  });
+  assert.deepEqual(result, { state: "draft", id: 59 });
+});
+
+test("still proves an absent release when replacement is authorized", async () => {
+  const result = await checkGithubReleaseState({
+    ...baseOptions,
+    replaceRelease: true,
+    fetchImpl: sequenceFetch(jsonResponse(404, { message: "Not Found" }), jsonResponse(200, [])),
+  });
+  assert.deepEqual(result, { state: "absent" });
+});
+
+test("refuses to combine replacement with the final publication gate", async () => {
+  await assert.rejects(
+    checkGithubReleaseState({
+      ...baseOptions,
+      requireDraft: true,
+      replaceRelease: true,
+      fetchImpl: sequenceFetch(jsonResponse(404, { message: "Not Found" })),
+    }),
+    /cannot be combined with replacing a release/,
+  );
+});
+
+test("fails closed on a replaceable release without a usable id", async () => {
+  await assert.rejects(
+    checkGithubReleaseState({
+      ...baseOptions,
+      replaceRelease: true,
+      fetchImpl: async () => jsonResponse(200, { tag_name: baseOptions.tag, draft: false }),
+    }),
+    /valid release id/,
+  );
+  await assert.rejects(
+    checkGithubReleaseState({
+      ...baseOptions,
+      replaceRelease: true,
+      fetchImpl: sequenceFetch(
+        jsonResponse(404, { message: "Not Found" }),
+        jsonResponse(200, [{ id: 0, tag_name: baseOptions.tag, draft: true }]),
+      ),
+    }),
+    /valid release id/,
+  );
+});
+
 test("fails closed on transport, auth, rate-limit, and API errors", async () => {
   await assert.rejects(
     checkGithubReleaseState({

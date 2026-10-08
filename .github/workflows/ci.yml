@@ -1,10 +1,21 @@
 name: CI
 
 on:
+  # Tag pushes deliberately do not start this workflow. A tag promotes the CI run
+  # that a main push already produced, so filtering tags here would build that
+  # commit a second time while the tag run and the main run overlap. Tagging a
+  # commit CI never packaged means dispatching this workflow against that tag,
+  # which the escape hatch below covers.
   push:
     branches:
       - main
   pull_request:
+  # Manual dispatch is the escape hatch when a push never produced a run, which
+  # happens on forks whose workflow registration GitHub dropped: a run can only
+  # start from an event, and re-pushing the same commit emits none. Dispatching
+  # against a ref still reports that ref's commit as github.sha, so the candidate
+  # artifact names keep matching the commit the tag pipeline promotes.
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -19,6 +30,7 @@ jobs:
       - website-build
       - desktop-core
       - desktop-package-linux
+      - desktop-package-linux-arm64
       - desktop-package-windows
     runs-on: ubuntu-latest
     permissions:
@@ -86,28 +98,25 @@ jobs:
   desktop-core:
     name: desktop-core
     if: ${{ always() }}
-    needs: desktop-core-shards
+    needs: desktop-core-run
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-      - name: Require every Core shard to succeed
+      - name: Require the Core run to succeed
         env:
           CI_NEEDS: ${{ toJSON(needs) }}
-        run: node scripts/check-ci-results.mjs --core-shards
+        run: node scripts/check-ci-results.mjs --core-run
 
-  desktop-core-shards:
-    name: Desktop Core (${{ matrix.shard }}/4)
+  desktop-core-run:
+    name: Desktop Core - ${{ github.event_name == 'pull_request' && 'Linux' || 'macOS' }}
     # PRs run Core on Linux, which doesn't queue behind the account's few macOS slots.
-    # Pushes to main keep macOS coverage.
+    # Pushes to main keep macOS coverage. The suite runs as a single job per platform
+    # instead of four shards, so it does not multiply demand on the scarce macOS runners.
     runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'macos-latest' }}
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2, 3, 4]
+    timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@v7
@@ -126,7 +135,7 @@ jobs:
         if: ${{ runner.os == 'macOS' }}
         env:
           PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ github.workspace }}/apps/desktop/test-results/core-report.json
-        run: pnpm --filter @pi-gui/desktop run test:e2e:ci:mac --shard=${{ matrix.shard }}/4 --reporter=line,json
+        run: pnpm --filter @pi-gui/desktop run test:e2e:ci:mac --reporter=line,json
 
       - name: Install Linux display dependencies
         if: ${{ runner.os == 'Linux' }}
@@ -147,7 +156,7 @@ jobs:
         run: >-
           xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24"
           sh -c 'openbox >/dev/null 2>&1 & exec "$@"' sh
-          pnpm --filter @pi-gui/desktop run test:e2e:core --shard=${{ matrix.shard }}/4 --reporter=line,json
+          pnpm --filter @pi-gui/desktop run test:e2e:core --reporter=line,json
 
       - name: Summarize Core timing
         if: ${{ !cancelled() }}
@@ -157,7 +166,7 @@ jobs:
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: desktop-core-test-results-${{ matrix.shard }}
+          name: desktop-core-test-results
           path: apps/desktop/test-results/
           retention-days: 7
           if-no-files-found: error
@@ -182,7 +191,7 @@ jobs:
         run: pnpm verify:release-config
 
       - name: Package Linux AppImage and deb
-        run: pnpm --filter @pi-gui/desktop run package:linux
+        run: pnpm --filter @pi-gui/desktop run package:linux:x64
 
       - name: Verify packaged runtime dependencies
         run: pnpm --dir apps/desktop run verify:packaged-runtime-deps:linux
@@ -206,13 +215,15 @@ jobs:
             --input apps/desktop/release \
             --output apps/desktop/release-candidate
 
+      # This candidate is the only packaged Linux release input: the tag pipeline
+      # promotes these bytes instead of packaging the same commit again.
       - name: Upload immutable Linux CI candidate
         uses: actions/upload-artifact@v7
         with:
           name: ci-release-linux-${{ github.sha }}
           path: apps/desktop/release-candidate/
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 90
           compression-level: 0
 
       - name: Upload Linux package proof
@@ -224,8 +235,102 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  desktop-package-linux-arm64:
+    runs-on: ubuntu-24.04-arm
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify Linux package configuration
+        run: pnpm verify:release-config
+
+      # Kylin V10 SP1 desktop ships glibc 2.31. Electron's own prebuilt binaries only
+      # need 2.25, but node-pty has no Linux prebuild and is compiled during packaging,
+      # so it must link against a glibc no newer than the target. Debian 11 is glibc 2.31.
+      - name: Package Linux AppImage and deb
+        run: |
+          docker run --rm \
+            -e HOST_UID="$(id -u)" \
+            -e HOST_GID="$(id -g)" \
+            -e COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
+            -v "$PWD:/work" \
+            -w /work \
+            node:22-bullseye \
+            bash -lc '
+              set -euo pipefail
+              if ! apt-get update >/dev/null 2>&1; then
+                printf "deb http://archive.debian.org/debian bullseye main\n" > /etc/apt/sources.list
+                echo "Acquire::Check-Valid-Until \"false\";" > /etc/apt/apt.conf.d/99no-check-valid
+                apt-get update
+              fi
+              apt-get install -y --no-install-recommends python3 make g++
+              corepack enable
+              pnpm --filter @pi-gui/desktop run package:linux:arm64
+              chown -R "$HOST_UID:$HOST_GID" apps/desktop/release apps/desktop/out
+            '
+
+      - name: Verify Linux arm64 packages stay within the Kylin glibc baseline
+        run: |
+          node apps/desktop/scripts/verify-linux-glibc-baseline.mjs \
+            --dir apps/desktop/release \
+            --max-glibc 2.31 \
+            --max-glibcxx 3.4.28
+
+      - name: Verify packaged runtime dependencies
+        run: pnpm --dir apps/desktop run verify:packaged-runtime-deps:linux
+
+      - name: Verify Linux packages
+        run: |
+          version="$(node -p "require('./apps/desktop/package.json').version")"
+          bash apps/desktop/scripts/verify-linux-release.sh \
+            --install \
+            "$PWD/apps/desktop/release" \
+            "$version" \
+            "$PWD/apps/desktop/release-proof/linux-arm64"
+
+      - name: Stage validated Linux candidate
+        run: |
+          version="$(node -p "require('./apps/desktop/package.json').version")"
+          node apps/desktop/scripts/release-artifacts.mjs stage \
+            --platform linux-arm64 \
+            --version "$version" \
+            --commit "$GITHUB_SHA" \
+            --input apps/desktop/release \
+            --output apps/desktop/release-candidate
+
+      # This candidate is the only packaged Linux arm64 release input: the tag
+      # pipeline promotes these bytes instead of packaging the same commit again.
+      - name: Upload immutable Linux CI candidate
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-release-linux-arm64-${{ github.sha }}
+          path: apps/desktop/release-candidate/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
+
+      - name: Upload Linux package proof
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-linux-arm64-package-proof-${{ github.sha }}
+          path: apps/desktop/release-proof/linux-arm64/
+          if-no-files-found: warn
+          retention-days: 14
+
   desktop-package-windows:
     runs-on: windows-latest
+    timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@v7
@@ -246,8 +351,39 @@ jobs:
       - name: Changed-file adapter tests
         run: pnpm --filter @pi-gui/desktop run test:changed-files
 
-      - name: Package Windows directory
-        run: pnpm --filter @pi-gui/desktop run package:win:dir
+      # Windows installers are packaged here so the tag pipeline promotes these
+      # bytes instead of packaging the same commit again.
+      - name: Package Windows installers
+        run: pnpm --filter @pi-gui/desktop run package:win
 
       - name: Verify packaged runtime dependencies
         run: pnpm --dir apps/desktop run verify:packaged-runtime-deps:windows
+
+      - name: Verify Windows packages and architecture
+        shell: pwsh
+        run: |
+          ./apps/desktop/scripts/verify-windows-release.ps1 `
+            -ReleaseDir "$PWD/apps/desktop/release" `
+            -Version "$((Get-Content apps/desktop/package.json | ConvertFrom-Json).version)" `
+            -PackagedApp "$PWD/apps/desktop/release/win-unpacked/pi-gui.exe" `
+            -SmokePackages
+
+      - name: Stage validated Windows candidate
+        shell: bash
+        run: |
+          version="$(node -p "require('./apps/desktop/package.json').version")"
+          node apps/desktop/scripts/release-artifacts.mjs stage \
+            --platform windows \
+            --version "$version" \
+            --commit "$GITHUB_SHA" \
+            --input apps/desktop/release \
+            --output apps/desktop/release-candidate
+
+      - name: Upload immutable Windows CI candidate
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-release-windows-${{ github.sha }}
+          path: apps/desktop/release-candidate/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0

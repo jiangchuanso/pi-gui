@@ -46,14 +46,14 @@ Root `pnpm e2e` delegates to the desktop core command, which builds first and
 uses the canonical desktop Playwright configuration. The root Playwright config
 shares that configuration instead of maintaining weaker independent defaults.
 
-The Electron Core suite runs on four separate runners with `--shard=N/4`. Pull
-requests run it on Ubuntu under Xvfb and openbox with two Playwright workers per
-runner, so PRs don't queue for the account's few macOS runners. Pushes to `main`
-run it on macOS with one worker per runner, so macOS-only specs and regressions
-surface there, after merge. File groups are assigned automatically; every
-shard must pass the stable `desktop-core` aggregate. Per-shard JSON reports,
-file timing summaries, and failure artifacts are retained. Discovery guards
-prove the four shards cover the full suite exactly once.
+The Electron Core suite runs as a single job per platform. Pull
+requests run it on Ubuntu under Xvfb and openbox with two Playwright workers, so
+PRs don't queue for the account's few macOS runners. Pushes to `main` run it on
+macOS with one worker, so macOS-only specs and regressions surface there, after
+merge. The run must pass the stable `desktop-core` aggregate. A JSON report,
+the file timing summary, and failure artifacts are retained. Discovery guards
+still prove the suite splits into four `--shard=N/4` groups covering every test
+exactly once, which is how the job would scale back out if run time required it.
 
 Core includes credential-free local-extension and injected-event regression
 coverage. Real-provider tests live in `tests/live`; real OS focus/clipboard
@@ -68,10 +68,51 @@ action runtimes are a separate pin.
 The website build, Linux installation/package and
 Windows package jobs remain separate. `pnpm check` alone does not prove these
 surfaces. Real-provider and native desktop verification retain their own lanes.
-The final `CI required` job accepts only success from all five existing jobs.
+The final `CI required` job accepts only success from every required job.
 See [merge enforcement](merge-enforcement.md) for its contract and remote
 activation status. Repository branch rules must require this result before it
 blocks merges; local tests alone do not establish remote enforcement.
+
+CI is also the only place a release is packaged. `desktop-package-linux` (x64),
+`desktop-package-linux-arm64` and `desktop-package-windows` stage and upload the
+immutable candidate for their own commit (`ci-release-linux-<sha>`,
+`ci-release-linux-arm64-<sha>` / `ci-release-windows-<sha>`, retained 90 days)
+after native install/launch verification on the matching architecture. The arm64
+candidate is built inside a Debian 11 (glibc 2.31) container so the compiled
+`node-pty` native module loads on Kylin V10 SP1, whose glibc is 2.31; the
+`verify-linux-glibc-baseline` guard fails the job if any packaged ELF needs a
+newer glibc than that baseline.
+
+Packaging runs on pushes to `main` and on an explicit `workflow_dispatch`, never
+on tag pushes. A tag names a commit `main` already packaged, so filtering tags
+into the packaging trigger would build that commit twice while the tag run and the
+main run overlap. A tag push starts only the tag pipeline, which resolves the
+successful packaging run of the tagged commit, downloads those exact bytes and
+promotes them through draft, native and published verification, so a tagged
+commit is never packaged twice. A tag whose commit has no successful packaging
+run, or whose candidates have expired, fails closed instead of rebuilding;
+rerun that commit's CI run to repackage it, or dispatch the packaging workflow for
+a commit it never built.
+
+Staging a draft also fails closed when the tag already has a release, so an
+accidental rerun can never overwrite assets someone downloaded. Releasing the
+same version again is an explicit operation: dispatch `release.yml` against the
+tag with `replace_release: true`, and the pipeline deletes that release (draft or
+published, and with it every published asset) before staging a fresh draft. A tag
+push never carries the input, so a tag push alone cannot replace anything.
+
+`ci.yml` also accepts `workflow_dispatch`, because a run can only start from an
+event: a commit that never produced a run (a fork whose workflow registration
+GitHub dropped, or a commit that never landed on `main`, for instance) has nothing
+to rerun, and pushing it again emits no event. A dispatched run reports the
+selected ref's commit as `github.sha`, so dispatching against a tag packages
+exactly the commit that tag points at and the candidate names still match what the
+tag pipeline promotes. The tag pipeline waits for the commit's packaging run
+until one of its runs succeeds, which is the state candidate resolution requires;
+it stops only when every run of the commit has already finished unsuccessfully,
+and after a 15-minute grace period when the commit has no run at all, rather than
+polling to its deadline. `verify:release-config` rejects a `ci.yml` push trigger
+that filters tags, so the double packaging cannot return silently.
 
 ## Next decisions, in order
 
