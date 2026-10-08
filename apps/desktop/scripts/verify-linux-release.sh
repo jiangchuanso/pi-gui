@@ -25,10 +25,32 @@ if [[ "$#" -lt 2 || "$#" -gt 3 ]]; then
   exit 2
 fi
 
-if [[ "$(uname -s)" != "Linux" || "$(uname -m)" != "x86_64" ]]; then
-  echo "Linux release verification must run on native Linux x86_64." >&2
+if [[ "$(uname -s)" != "Linux" ]]; then
+  echo "Linux release verification must run on native Linux." >&2
   exit 1
 fi
+
+# Validate the artifacts of the runner's own architecture: the archive inspection
+# below is arch-aware, and the install/upgrade/launch/removal checks execute the
+# packaged app natively, so cross-architecture byte inspection is not sufficient.
+case "$(uname -m)" in
+  x86_64)
+    appimage_arch="x86_64"
+    deb_arch="amd64"
+    elf_machine="Advanced Micro Devices X86-64"
+    node_pty_prebuilds="linux-x64"
+    ;;
+  aarch64 | arm64)
+    appimage_arch="arm64"
+    deb_arch="arm64"
+    elf_machine="AArch64"
+    node_pty_prebuilds="linux-arm64"
+    ;;
+  *)
+    echo "Linux release verification supports x86_64 and aarch64 only (got $(uname -m))." >&2
+    exit 1
+    ;;
+esac
 
 if $install_package && [[ "${CI:-}" != "true" ]]; then
   echo "Package install, upgrade, and removal verification is restricted to CI." >&2
@@ -41,8 +63,8 @@ proof_dir="${3:-$release_dir/linux-package-proof}"
 mkdir -p "$proof_dir"
 proof_dir="$(cd "$proof_dir" && pwd)"
 
-appimage="$release_dir/pi-gui-$version-x86_64.AppImage"
-deb="$release_dir/pi-gui_${version}_amd64.deb"
+appimage="$release_dir/pi-gui-$version-$appimage_arch.AppImage"
+deb="$release_dir/pi-gui_${version}_${deb_arch}.deb"
 debian_version="$(normalize_debian_version "$version")"
 required_dependencies=(
   "libgtk-3-0 | libgtk-3-0t64"
@@ -138,7 +160,7 @@ install_test_tools() {
 
 verify_appimage() {
   readelf -h "$appimage" | tee "$proof_dir/appimage-elf-header.txt"
-  grep -F "Advanced Micro Devices X86-64" "$proof_dir/appimage-elf-header.txt"
+  grep -F "$elf_machine" "$proof_dir/appimage-elf-header.txt"
   chmod +x "$appimage"
 
   local extract_root="$temporary_root/appimage"
@@ -161,7 +183,7 @@ verify_appimage() {
   fi
 
   readelf -h "$extracted/pi-gui" | tee "$proof_dir/appimage-app-elf-header.txt"
-  grep -F "Advanced Micro Devices X86-64" "$proof_dir/appimage-app-elf-header.txt"
+  grep -F "$elf_machine" "$proof_dir/appimage-app-elf-header.txt"
 }
 
 verify_deb_archive() {
@@ -171,7 +193,7 @@ verify_deb_archive() {
 
   assert_control_field Package "pi-gui"
   assert_control_field Version "$debian_version"
-  assert_control_field Architecture "amd64"
+  assert_control_field Architecture "$deb_arch"
   assert_control_field Section "devel"
   assert_control_field Priority "optional"
   assert_control_field Maintainer "Matthew Lam <minghinmatthew.lam@gmail.com>"
@@ -207,7 +229,7 @@ verify_deb_archive() {
   assert_contents "$contents" '\./usr/share/icons/hicolor/[0-9]+x[0-9]+/apps/pi-gui\.png$' "desktop icon"
   assert_contents \
     "$contents" \
-    '\./opt/pi-gui/resources/app\.asar\.unpacked/node_modules/(\.pnpm/[^/]+/node_modules/)?node-pty/(build/Release|prebuilds/linux-x64)/pty\.node$' \
+    "\./opt/pi-gui/resources/app\.asar\.unpacked/node_modules/(\.pnpm/[^/]+/node_modules/)?node-pty/(build/Release|prebuilds/${node_pty_prebuilds})/pty\.node\$" \
     "native node-pty module"
 
   local control_dir="$temporary_root/control"
@@ -237,14 +259,14 @@ verify_deb_archive() {
   local extracted="$temporary_root/deb-root"
   dpkg-deb --extract "$deb" "$extracted"
   readelf -h "$extracted/opt/pi-gui/pi-gui" | tee "$proof_dir/deb-app-elf-header.txt"
-  grep -F "Advanced Micro Devices X86-64" "$proof_dir/deb-app-elf-header.txt"
+  grep -F "$elf_machine" "$proof_dir/deb-app-elf-header.txt"
 
   mapfile -t native_modules < <(
     find -L "$extracted/opt/pi-gui/resources/app.asar.unpacked/node_modules" \
       -type f \
       \( \
         -path '*/node-pty/build/Release/pty.node' -o \
-        -path '*/node-pty/prebuilds/linux-x64/pty.node' \
+        -path "*/node-pty/prebuilds/${node_pty_prebuilds}/pty.node" \
       \) \
       -print
   )
@@ -255,7 +277,7 @@ verify_deb_archive() {
   : >"$proof_dir/native-node-pty-files.txt"
   for native_module in "${native_modules[@]}"; do
     file "$native_module" | tee -a "$proof_dir/native-node-pty-files.txt"
-    readelf -h "$native_module" | grep -F "Advanced Micro Devices X86-64" \
+    readelf -h "$native_module" | grep -F "$elf_machine" \
       | tee -a "$proof_dir/native-node-pty-files.txt"
   done
 
@@ -269,7 +291,7 @@ verify_install_upgrade_launch_remove() {
   fi
 
   local old_root="$temporary_root/old-package"
-  local old_deb="$temporary_root/pi-gui_0.0.0_amd64.deb"
+  local old_deb="$temporary_root/pi-gui_0.0.0_${deb_arch}.deb"
   dpkg-deb --raw-extract "$deb" "$old_root"
   sed -i 's/^Version: .*/Version: 0.0.0/' "$old_root/DEBIAN/control"
   dpkg-deb --build --root-owner-group "$old_root" "$old_deb" \

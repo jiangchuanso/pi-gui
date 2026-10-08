@@ -17,6 +17,9 @@ function updateManifestName(platform) {
   if (platform === "linux") {
     return "latest-linux.yml";
   }
+  if (platform === "linux-arm64") {
+    return "latest-linux-arm64.yml";
+  }
   return "latest.yml";
 }
 
@@ -27,6 +30,9 @@ function primaryUpdateAsset(platform) {
   if (platform === "linux") {
     return `pi-gui-${VERSION}-x86_64.AppImage`;
   }
+  if (platform === "linux-arm64") {
+    return `pi-gui-${VERSION}-arm64.AppImage`;
+  }
   return `pi-gui-${VERSION}-x64-setup.exe`;
 }
 
@@ -36,6 +42,9 @@ function updateAssets(platform) {
   }
   if (platform === "linux") {
     return [`pi-gui-${VERSION}-x86_64.AppImage`, `pi-gui_${VERSION}_amd64.deb`];
+  }
+  if (platform === "linux-arm64") {
+    return [`pi-gui-${VERSION}-arm64.AppImage`, `pi-gui_${VERSION}_arm64.deb`];
   }
   return [primaryUpdateAsset(platform)];
 }
@@ -89,7 +98,7 @@ test("stages immutable platform manifests and verifies the combined candidate", 
   const combined = path.join(root, "combined");
   await mkdir(combined);
 
-  for (const platform of ["macos", "linux", "windows"]) {
+  for (const platform of ["linux", "linux-arm64", "windows"]) {
     const staged = await stageFixture(root, platform);
     await cp(staged, combined, { recursive: true });
   }
@@ -102,7 +111,7 @@ test("stages immutable platform manifests and verifies the combined candidate", 
   });
   assert.deepEqual(
     manifests.map(({ platform }) => platform),
-    ["macos", "linux", "windows"],
+    ["linux", "linux-arm64", "windows"],
   );
 });
 
@@ -211,7 +220,7 @@ test("rejects undeclared files in the combined release candidate", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "pi-gui-release-extra-"));
   const combined = path.join(root, "combined");
   await mkdir(combined);
-  for (const platform of ["macos", "linux", "windows"]) {
+  for (const platform of ["linux", "linux-arm64", "windows"]) {
     await cp(await stageFixture(root, platform), combined, { recursive: true });
   }
   await writeFile(path.join(combined, "stale-installer.exe"), "stale\n", "utf8");

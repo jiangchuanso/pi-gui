@@ -50,6 +50,16 @@ function runText(step) {
 }
 
 function validateCiWorkflow(workflow) {
+  const pushTrigger = workflow.on?.push ?? {};
+  assert(
+    !("tags" in pushTrigger) && !("tags-ignore" in pushTrigger),
+    "CI must package a commit once: a tag push must promote the commit's packaging run instead of starting another one",
+  );
+  assert(
+    workflow.on?.workflow_dispatch !== undefined,
+    "CI must accept workflow_dispatch so a commit that never produced a run can still be packaged",
+  );
+
   const versionCheck = stepNamed(workflow.jobs?.typecheck, "Verify release version consistency");
   assert(
     runText(versionCheck).includes("pnpm verify:release-version"),
@@ -65,8 +75,10 @@ function validateCiWorkflow(workflow) {
     "Linux package CI must validate release configuration before packaging",
   );
   assert(
-    runText(stepNamed(linuxJob, "Package Linux AppImage and deb")).includes("run package:linux"),
-    "Linux package CI must build the configured AppImage and deb targets",
+    runText(stepNamed(linuxJob, "Package Linux AppImage and deb")).includes(
+      "run package:linux:x64",
+    ),
+    "Linux x64 package CI must build the configured AppImage and deb targets",
   );
   assert(
     runText(stepNamed(linuxJob, "Verify Linux packages")).includes("verify-linux-release.sh") &&
@@ -94,12 +106,51 @@ function validateCiWorkflow(workflow) {
     candidateUpload.with?.["if-no-files-found"] === "error",
     "Linux CI candidate upload must fail if staging produced no files",
   );
+  assert(
+    candidateUpload.with?.overwrite !== true,
+    "Linux CI candidate upload must remain immutable",
+  );
 
   const windowsJob = workflow.jobs?.["desktop-package-windows"];
   assert(windowsJob?.["runs-on"] === "windows-latest", "Windows package CI must run on Windows");
   assert(
-    runText(stepNamed(windowsJob, "Package Windows directory")).includes("run package:win:dir"),
-    "Windows package CI must use the retrying Windows packager",
+    !JSON.stringify(windowsJob).includes("WINDOWS_CSC_"),
+    "Unsigned Windows releases must not depend on signing secrets",
+  );
+  assert(
+    runText(stepNamed(windowsJob, "Package Windows installers")).includes("run package:win") &&
+      !JSON.stringify(windowsJob).includes("package:win:dir"),
+    "Windows package CI must build the installers the tag pipeline promotes",
+  );
+  assert(
+    runText(stepNamed(windowsJob, "Verify packaged runtime dependencies")).includes(
+      "verify:packaged-runtime-deps:windows",
+    ),
+    "Windows package CI must verify the packaged runtime dependencies",
+  );
+  const windowsVerification = stepNamed(windowsJob, "Verify Windows packages and architecture");
+  assert(
+    runText(windowsVerification).includes("-SmokePackages"),
+    "Windows package CI must smoke-test both downloadable packages",
+  );
+  const windowsStage = stepNamed(windowsJob, "Stage validated Windows candidate");
+  assert(
+    runText(windowsStage).includes("release-artifacts.mjs stage"),
+    "Windows package CI must validate actual outputs through the candidate manifest helper",
+  );
+  const windowsUpload = stepNamed(windowsJob, "Upload immutable Windows CI candidate");
+  assert(
+    isAction(windowsUpload.uses, "actions/upload-artifact") &&
+      windowsUpload.with?.path === "apps/desktop/release-candidate/",
+    "Windows CI candidate must upload the staged file set",
+  );
+  assert(
+    windowsUpload.with?.["if-no-files-found"] === "error",
+    "Windows CI candidate upload must fail when staging produced no files",
+  );
+  assert(
+    windowsUpload.with?.overwrite !== true,
+    "Windows CI candidate upload must remain immutable",
   );
 
   const proofUpload = stepNamed(linuxJob, "Upload Linux package proof");
@@ -109,8 +160,15 @@ function validateCiWorkflow(workflow) {
     "Linux CI must retain native package proof logs separately",
   );
   assert(
-    Number(candidateUpload.with?.["retention-days"]) >= 14 &&
-      Number(proofUpload.with?.["retention-days"]) >= 14,
+    Number(candidateUpload.with?.["retention-days"]) >= 90,
+    "CI must retain the promoted candidates long enough for a later tag",
+  );
+  assert(
+    Number(windowsUpload.with?.["retention-days"]) >= 90,
+    "CI must retain the promoted Windows candidate long enough for a later tag",
+  );
+  assert(
+    Number(proofUpload.with?.["retention-days"]) >= 14,
     "Linux CI package proof must be retained for at least 14 days",
   );
   assert(
@@ -118,6 +176,89 @@ function validateCiWorkflow(workflow) {
       linuxJob.steps.indexOf(candidateStage) < linuxJob.steps.indexOf(candidateUpload),
     "Linux CI must complete native validation before staging and uploading a candidate",
   );
+  assert(
+    windowsJob.steps.indexOf(windowsVerification) < windowsJob.steps.indexOf(windowsStage) &&
+      windowsJob.steps.indexOf(windowsStage) < windowsJob.steps.indexOf(windowsUpload),
+    "Windows CI must complete native validation before staging and uploading a candidate",
+  );
+
+  const linuxArm64Job = workflow.jobs?.["desktop-package-linux-arm64"];
+  assert(
+    linuxArm64Job?.["runs-on"] === "ubuntu-24.04-arm",
+    "Linux arm64 package CI must run on an arm64 Ubuntu runner",
+  );
+  const arm64Steps = linuxArm64Job.steps ?? [];
+  const arm64Configuration = stepNamed(linuxArm64Job, "Verify Linux package configuration");
+  const arm64Packaging = stepNamed(linuxArm64Job, "Package Linux AppImage and deb");
+  const arm64Baseline = stepNamed(
+    linuxArm64Job,
+    "Verify Linux arm64 packages stay within the Kylin glibc baseline",
+  );
+  const arm64PackageVerification = stepNamed(linuxArm64Job, "Verify Linux packages");
+  const arm64CandidateStage = stepNamed(linuxArm64Job, "Stage validated Linux candidate");
+  const arm64CandidateUpload = stepNamed(linuxArm64Job, "Upload immutable Linux CI candidate");
+  const arm64ProofUpload = stepNamed(linuxArm64Job, "Upload Linux package proof");
+  assert(
+    runText(arm64Configuration).includes("verify:release-config"),
+    "Linux arm64 package CI must validate release configuration before packaging",
+  );
+  assert(
+    runText(arm64Packaging).includes("docker run") &&
+      runText(arm64Packaging).includes("node:22-bullseye") &&
+      runText(arm64Packaging).includes("run package:linux:arm64"),
+    "Linux arm64 packaging must build inside the Debian 11 (glibc 2.31) container so node-pty matches the Kylin V10 SP1 baseline",
+  );
+  assert(
+    runText(arm64Baseline).includes("verify-linux-glibc-baseline.mjs") &&
+      runText(arm64Baseline).includes("--max-glibc 2.31"),
+    "Linux arm64 CI must enforce the packaged native modules' glibc baseline",
+  );
+  assert(
+    runText(arm64PackageVerification).includes("verify-linux-release.sh") &&
+      runText(arm64PackageVerification).includes("--install"),
+    "Linux arm64 package CI must run native archive and install lifecycle verification",
+  );
+  assert(
+    runText(arm64CandidateStage).includes("release-artifacts.mjs stage") &&
+      runText(arm64CandidateStage).includes("--platform linux-arm64") &&
+      arm64Steps.indexOf(arm64Packaging) < arm64Steps.indexOf(arm64Baseline) &&
+      arm64Steps.indexOf(arm64Baseline) < arm64Steps.indexOf(arm64PackageVerification) &&
+      arm64Steps.indexOf(arm64PackageVerification) < arm64Steps.indexOf(arm64CandidateStage) &&
+      arm64Steps.indexOf(arm64CandidateStage) < arm64Steps.indexOf(arm64CandidateUpload),
+    "Linux arm64 CI must build on the glibc baseline, then verify and stage in order",
+  );
+  assert(
+    isAction(arm64CandidateUpload.uses, "actions/upload-artifact") &&
+      arm64CandidateUpload.with?.path === "apps/desktop/release-candidate/" &&
+      arm64CandidateUpload.with?.["if-no-files-found"] === "error" &&
+      arm64CandidateUpload.with?.overwrite !== true &&
+      Number(arm64CandidateUpload.with?.["retention-days"]) >= 90,
+    "Linux arm64 CI candidate upload must be immutable and retained for a later tag",
+  );
+  assert(
+    isAction(arm64ProofUpload.uses, "actions/upload-artifact") &&
+      arm64ProofUpload.with?.path === "apps/desktop/release-proof/linux-arm64/" &&
+      Number(arm64ProofUpload.with?.["retention-days"]) >= 14 &&
+      !String(arm64ProofUpload.with?.name).startsWith("ci-release-"),
+    "Linux arm64 CI must retain native package proof logs separately",
+  );
+
+  const candidates = {
+    linux: "ci-release-linux-${{ github.sha }}",
+    "linux-arm64": "ci-release-linux-arm64-${{ github.sha }}",
+    windows: "ci-release-windows-${{ github.sha }}",
+  };
+  assert(
+    candidateUpload.with?.name === candidates.linux &&
+      arm64CandidateUpload.with?.name === candidates["linux-arm64"] &&
+      windowsUpload.with?.name === candidates.windows,
+    "CI candidate artifact names must be the exact names the tag pipeline promotes",
+  );
+  assert(
+    !String(proofUpload.with?.name).startsWith("ci-release-"),
+    "CI proof artifacts must not match the candidate promotion pattern",
+  );
+  return candidates;
 }
 
 function validateBuilderConfig(config, desktopPackage, afterRemoveSource) {
@@ -153,7 +294,16 @@ function validateBuilderConfig(config, desktopPackage, afterRemoveSource) {
   );
   assert(
     desktopPackage.scripts?.["package:linux"]?.includes(linuxPackageCommand),
-    "pnpm Linux packaging must build AppImage and deb for x64",
+    "pnpm Linux packaging must keep the canonical Linux package command",
+  );
+  assert(
+    desktopPackage.scripts?.["package:linux:x64"]?.includes(
+      "node scripts/run-electron-builder.mjs --linux --x64 --publish never",
+    ) &&
+      desktopPackage.scripts?.["package:linux:arm64"]?.includes(
+        "node scripts/run-electron-builder.mjs --linux --arm64 --publish never",
+      ),
+    "pnpm Linux packaging must build AppImage and deb for both x64 and arm64",
   );
   assert(
     desktopPackage.scripts?.["package:linux:dir"]?.includes(
@@ -177,12 +327,8 @@ function validateBuilderConfig(config, desktopPackage, afterRemoveSource) {
     "Linux package synopsis must remain explicit",
   );
   assert(
-    JSON.stringify(config.linux?.target) ===
-      JSON.stringify([
-        { target: "AppImage", arch: ["x64"] },
-        { target: "deb", arch: ["x64"] },
-      ]),
-    "Linux packaging must produce x64 AppImage and deb targets",
+    JSON.stringify(config.linux?.target) === JSON.stringify(["AppImage", "deb"]),
+    "Linux packaging must declare AppImage and deb; each build selects x64 or arm64 explicitly",
   );
 
   assert(
@@ -230,23 +376,7 @@ function validateGithubDownloadRetry(retrySource, packageWindowsSource, runElect
   );
 }
 
-function validateBuildJob(job, platform) {
-  const upload = stepNamed(job, `Upload immutable ${platform} candidate`);
-  assert(isAction(upload.uses, "actions/upload-artifact"), `${platform} must use upload-artifact`);
-  assert(
-    upload.with?.["if-no-files-found"] === "error",
-    `${platform} candidate upload must fail when files are missing`,
-  );
-  assert(upload.with?.overwrite !== true, `${platform} candidate upload must remain immutable`);
-
-  const stage = stepNamed(job, `Stage validated ${platform} artifacts`);
-  assert(
-    runText(stage).includes("release-artifacts.mjs stage"),
-    `${platform} candidate must be staged through the release manifest helper`,
-  );
-}
-
-function validateWorkflow(workflow, finalizerSource, linuxVerifierSource, windowsVerifierSource) {
+function validateWorkflow(workflow, candidates, linuxVerifierSource, windowsVerifierSource) {
   const jobs = workflow.jobs ?? {};
   const releasePreflight = jobs["release-preflight"];
   const versionCheck = stepNamed(releasePreflight, "Verify release tag and product versions");
@@ -255,12 +385,53 @@ function validateWorkflow(workflow, finalizerSource, linuxVerifierSource, window
       runText(versionCheck).includes('--tag "$GITHUB_REF_NAME"'),
     "Release preflight must require the exact tag across product package versions",
   );
-  for (const jobName of ["build-macos", "build-linux", "build-windows"]) {
+
+  const serializedWorkflow = JSON.stringify(jobs);
+  for (const marker of [
+    "electron-builder",
+    "package:linux",
+    "package:win",
+    "run-electron-builder.mjs",
+    "package-windows.mjs",
+  ]) {
     assert(
-      jobs[jobName]?.needs === "release-preflight",
-      `${jobName} must wait for release version preflight`,
+      !serializedWorkflow.includes(marker),
+      `Tag pipeline must promote the CI candidates instead of packaging again (found ${marker})`,
     );
   }
+
+  const resolveJob = jobs["resolve-candidate"];
+  const resolveNeeds = resolveJob?.needs;
+  const resolveNeedsList = Array.isArray(resolveNeeds)
+    ? resolveNeeds
+    : typeof resolveNeeds === "string"
+      ? [resolveNeeds]
+      : [];
+  assert(
+    resolveNeedsList.includes("release-preflight") && resolveNeedsList.includes("wait-for-ci"),
+    "Candidate resolution must wait for release version preflight and for CI to package the commit",
+  );
+  assert(
+    resolveJob.permissions?.actions === "read" && resolveJob.permissions?.contents === "read",
+    "Candidate resolution must read workflow runs and artifacts without release write access",
+  );
+  assert(
+    resolveJob.outputs?.["run-id"] === "${{ steps.resolve.outputs.run-id }}",
+    "Candidate resolution must publish the packaging run id",
+  );
+  const promotedNames = Object.fromEntries(
+    Object.entries(candidates).map(([platform, name]) => [
+      platform,
+      name.replace("${{ github.sha }}", "$GITHUB_SHA"),
+    ]),
+  );
+  const resolveStep = stepNamed(resolveJob, "Resolve the CI-packaged candidates");
+  assert(
+    runText(resolveStep).includes("resolve-ci-candidate.mjs") &&
+      runText(resolveStep).includes('--commit "$GITHUB_SHA"') &&
+      Object.values(promotedNames).every((name) => runText(resolveStep).includes(name)),
+    "Candidate resolution must require every CI candidate of the tagged commit",
+  );
 
   const releaseSteps = Object.entries(jobs).flatMap(([jobName, job]) =>
     (job.steps ?? [])
@@ -274,69 +445,6 @@ function validateWorkflow(workflow, finalizerSource, linuxVerifierSource, window
   );
   assert(workflow.permissions?.contents === "read", "Release workflow must default to read access");
 
-  validateBuildJob(jobs["build-macos"], "macOS");
-  validateBuildJob(jobs["build-linux"], "Linux");
-  validateBuildJob(jobs["build-windows"], "Windows");
-
-  const macFinalize = stepNamed(jobs["build-macos"], "Notarize and verify final macOS artifacts");
-  const macRefresh = stepNamed(jobs["build-macos"], "Refresh update metadata from final DMG");
-  const macStage = stepNamed(jobs["build-macos"], "Stage validated macOS artifacts");
-  assert(
-    runText(macFinalize).includes("finalize-macos-release.sh"),
-    "macOS build must run final DMG notarization and trust validation",
-  );
-  assert(macFinalize["continue-on-error"] !== true, "Final macOS validation must be fatal");
-  for (const command of [
-    "set -euo pipefail",
-    "notarytool submit",
-    "stapler staple",
-    "stapler validate",
-    "spctl --assess --type open",
-  ]) {
-    assert(finalizerSource.includes(command), `macOS finalizer must contain: ${command}`);
-  }
-  assert(
-    runText(macRefresh).includes("refresh-macos-update-metadata.mjs"),
-    "macOS build must regenerate update metadata from the stapled DMG",
-  );
-  assert(
-    jobs["build-macos"].steps.indexOf(macFinalize) <
-      jobs["build-macos"].steps.indexOf(macRefresh) &&
-      jobs["build-macos"].steps.indexOf(macRefresh) < jobs["build-macos"].steps.indexOf(macStage),
-    "macOS metadata refresh must run after stapling and before artifact staging",
-  );
-
-  const linuxJob = jobs["build-linux"];
-  const linuxPackage = stepNamed(linuxJob, "Package Linux AppImage and deb");
-  assert(
-    runText(linuxPackage).includes("run-electron-builder.mjs") &&
-      runText(linuxPackage).includes("--linux") &&
-      !runText(linuxPackage).includes("--linux AppImage") &&
-      !runText(linuxPackage).includes("--x64"),
-    "Linux release packaging must use the validated target and architecture configuration",
-  );
-  const linuxBuildVerification = stepNamed(linuxJob, "Verify Linux packages");
-  assert(
-    runText(linuxBuildVerification).includes("verify-linux-release.sh") &&
-      runText(linuxBuildVerification).includes("--install"),
-    "Linux build must natively validate both packages and the install lifecycle",
-  );
-  const linuxStage = stepNamed(linuxJob, "Stage validated Linux artifacts");
-  assert(
-    linuxJob.steps.indexOf(linuxBuildVerification) < linuxJob.steps.indexOf(linuxStage),
-    "Linux release validation must complete before candidate staging",
-  );
-  const linuxProofUpload = stepNamed(linuxJob, "Upload Linux package proof");
-  assert(
-    isAction(linuxProofUpload.uses, "actions/upload-artifact") &&
-      linuxProofUpload.with?.path === "apps/desktop/release-proof/linux-build/" &&
-      Number(linuxProofUpload.with?.["retention-days"]) >= 14,
-    "Linux release build must retain native package proof for at least 14 days",
-  );
-  assert(
-    !String(linuxProofUpload.with?.name).startsWith("release-"),
-    "Linux proof artifacts must not match the immutable release candidate download pattern",
-  );
   for (const marker of [
     "--appimage-extract",
     '"$extracted/AppRun"',
@@ -359,24 +467,6 @@ function validateWorkflow(workflow, finalizerSource, linuxVerifierSource, window
     assert(linuxVerifierSource.includes(marker), `Linux package verifier must contain: ${marker}`);
   }
 
-  const windowsJob = jobs["build-windows"];
-  const packageStep = stepNamed(windowsJob, "Package Windows");
-  assert(
-    !JSON.stringify(windowsJob).includes("WINDOWS_CSC_"),
-    "Unsigned Windows releases must not depend on signing secrets",
-  );
-  assert(
-    runText(packageStep).includes("package-windows.mjs"),
-    "Windows release must use the canonical packaging command",
-  );
-  const windowsBuildVerification = stepNamed(
-    windowsJob,
-    "Verify Windows packages and architecture",
-  );
-  assert(
-    runText(windowsBuildVerification).includes("-SmokePackages"),
-    "Windows build must smoke-test both downloadable packages",
-  );
   for (const marker of [
     "Assert-ArtifactFile $setup",
     "Assert-ArtifactFile $portable",
@@ -397,14 +487,36 @@ function validateWorkflow(workflow, finalizerSource, linuxVerifierSource, window
 
   const stageDraft = jobs["stage-draft"];
   assert(
-    JSON.stringify(stageDraft.needs) ===
-      JSON.stringify(["build-macos", "build-linux", "build-windows"]),
-    "Draft staging must wait for every platform candidate",
+    JSON.stringify(stageDraft.needs) === JSON.stringify(["resolve-candidate"]),
+    "Draft staging must wait for the resolved CI candidates",
   );
   assert(
-    stageDraft.permissions?.contents === "write",
-    "Draft staging needs release write permission",
+    stageDraft.permissions?.contents === "write" && stageDraft.permissions?.actions === "read",
+    "Draft staging needs release write permission and candidate read access",
   );
+
+  const download = stepNamed(stageDraft, "Download the CI-packaged candidates");
+  assert(
+    isAction(download.uses, "actions/download-artifact"),
+    "Draft staging must download the packaged candidates",
+  );
+  assert(
+    download.with?.pattern === "ci-release-*-${{ github.sha }}" &&
+      download.with?.path === "release-candidate" &&
+      download.with?.["merge-multiple"] === true,
+    "Draft staging must merge exactly the promoted candidate artifacts",
+  );
+  assert(
+    download.with?.["run-id"] === "${{ needs.resolve-candidate.outputs.run-id }}" &&
+      download.with?.["github-token"] === "${{ github.token }}",
+    "Draft staging must download from the resolved packaging run",
+  );
+  for (const platform of Object.keys(candidates)) {
+    assert(
+      /^ci-release-[a-z0-9-]+-\$\{\{ github\.sha \}\}$/.test(candidates[platform]),
+      `Promoted ${platform} candidate names must stay bound to the committed sha`,
+    );
+  }
 
   const steps = stageDraft.steps ?? [];
   const candidateIndex = steps.findIndex(
@@ -412,15 +524,49 @@ function validateWorkflow(workflow, finalizerSource, linuxVerifierSource, window
   );
   const stateCheck = stepNamed(stageDraft, "Check existing release state");
   const stateCheckIndex = steps.indexOf(stateCheck);
+  const replaceStep = stepNamed(stageDraft, "Replace the existing release");
+  const replaceIndex = steps.indexOf(replaceStep);
   const uploadIndex = steps.findIndex(({ uses }) => isAction(uses, "softprops/action-gh-release"));
   assert(
-    candidateIndex >= 0 && candidateIndex < stateCheckIndex && stateCheckIndex < uploadIndex,
-    "Candidate validation and fail-closed state lookup must precede draft upload",
+    candidateIndex >= 0 &&
+      candidateIndex < stateCheckIndex &&
+      stateCheckIndex < replaceIndex &&
+      replaceIndex < uploadIndex,
+    "Candidate validation, the fail-closed state lookup, and any authorized replacement must precede draft upload",
   );
   assert(
     runText(stateCheck).includes("github-release-state.mjs") &&
       !runText(stateCheck).includes("gh release view"),
     "Existing release lookup must use the fail-closed API state checker",
+  );
+
+  const dispatch = workflow.on?.workflow_dispatch;
+  assert(
+    dispatch?.inputs?.replace_release?.type === "boolean" &&
+      dispatch.inputs.replace_release.default === false,
+    "Replacing an existing release must be an explicit, opt-in dispatch input",
+  );
+  assert(
+    stageDraft.env?.REPLACE_RELEASE === "${{ inputs.replace_release }}" &&
+      runText(stateCheck).includes('"$REPLACE_RELEASE" = "true"') &&
+      runText(stateCheck).includes("github-release-state.mjs --replace-release"),
+    "Only a dispatch that asks for replacement may authorize the state checker to accept an existing release",
+  );
+  assert(
+    typeof replaceStep.if === "string" &&
+      replaceStep.if.includes("env.REPLACE_RELEASE == 'true'") &&
+      replaceStep.if.includes("steps.release-state.outputs.state != 'absent'"),
+    "Replacement must run only for an authorized dispatch that found an existing release",
+  );
+  assert(
+    runText(replaceStep).includes("gh api") &&
+      runText(replaceStep).includes("/releases/${{ steps.release-state.outputs.id }}") &&
+      !runText(replaceStep).includes("--cleanup-tag"),
+    "Replacement must delete exactly the known release and keep the tag",
+  );
+  assert(
+    runText(replaceStep).includes("github-release-state.mjs"),
+    "Replacement must fail closed unless the tag has no release left",
   );
 
   const release = releaseSteps[0].step;
@@ -431,8 +577,8 @@ function validateWorkflow(workflow, finalizerSource, linuxVerifierSource, window
   );
 
   const draftVerifiers = [
-    ["verify-draft-macos", "Verify draft macOS trust"],
     ["verify-draft-linux", "Verify draft Linux packages"],
+    ["verify-draft-linux-arm64", "Verify draft Linux arm64 packages"],
     ["verify-draft-windows", "Verify draft Windows packages"],
   ];
   for (const [jobName, trustStep] of draftVerifiers) {
@@ -471,7 +617,7 @@ function validateWorkflow(workflow, finalizerSource, linuxVerifierSource, window
   const publish = jobs.publish;
   assert(
     JSON.stringify(publish.needs) ===
-      JSON.stringify(["verify-draft-macos", "verify-draft-linux", "verify-draft-windows"]),
+      JSON.stringify(["verify-draft-linux", "verify-draft-linux-arm64", "verify-draft-windows"]),
     "Final publication must wait for all native draft trust checks",
   );
   assert(
@@ -504,6 +650,11 @@ function validateWorkflow(workflow, finalizerSource, linuxVerifierSource, window
     "Final publication must fail closed unless the validated draft still exists",
   );
   assert(
+    !JSON.stringify(publish).includes("--replace-release") &&
+      !JSON.stringify(publish).includes("gh api"),
+    "Final publication must never replace an existing release or delete a published one",
+  );
+  assert(
     runText(publishSteps[revalidateIndex]).includes("--platform all"),
     "Final publication must revalidate unchanged draft bytes",
   );
@@ -534,8 +685,8 @@ function validateWorkflow(workflow, finalizerSource, linuxVerifierSource, window
   );
 
   const publishedVerifiers = [
-    ["verify-published-macos", "Verify published macOS trust"],
     ["verify-published-linux", "Verify published Linux packages"],
+    ["verify-published-linux-arm64", "Verify published Linux arm64 packages"],
     ["verify-published-windows", "Verify published Windows packages"],
   ];
   for (const [jobName, trustStep] of publishedVerifiers) {
@@ -566,23 +717,12 @@ function validateWorkflow(workflow, finalizerSource, linuxVerifierSource, window
     ).includes("-SmokePackages"),
     "Published Windows packages must be installed and extracted",
   );
-
-  assert(
-    JSON.stringify(jobs["sync-homebrew"]?.needs) ===
-      JSON.stringify([
-        "verify-published-macos",
-        "verify-published-linux",
-        "verify-published-windows",
-      ]),
-    "Homebrew sync must wait for every post-publication native verification",
-  );
 }
 
 const [
   builderConfig,
   ciWorkflow,
   workflow,
-  finalizerSource,
   linuxVerifierSource,
   windowsVerifierSource,
   desktopPackageSource,
@@ -594,7 +734,6 @@ const [
   parseYaml("apps/desktop/electron-builder.yml"),
   parseYaml(".github/workflows/ci.yml"),
   parseYaml(".github/workflows/release.yml"),
-  readFile(path.join(scriptDir, "finalize-macos-release.sh"), "utf8"),
   readFile(path.join(scriptDir, "verify-linux-release.sh"), "utf8"),
   readFile(path.join(scriptDir, "verify-windows-release.ps1"), "utf8"),
   readFile(path.join(scriptDir, "..", "package.json"), "utf8"),
@@ -607,7 +746,7 @@ const [
 await assertWorkflowActionPolicy(repoDir);
 await validateConfiguration(builderConfig, new DebugLogger(false));
 validateBuilderConfig(builderConfig, JSON.parse(desktopPackageSource), afterRemoveSource);
-validateCiWorkflow(ciWorkflow);
-validateWorkflow(workflow, finalizerSource, linuxVerifierSource, windowsVerifierSource);
+const candidates = validateCiWorkflow(ciWorkflow);
+validateWorkflow(workflow, candidates, linuxVerifierSource, windowsVerifierSource);
 validateGithubDownloadRetry(retrySource, packageWindowsSource, runElectronBuilderSource);
 console.log("Release package and workflow configuration are valid.");

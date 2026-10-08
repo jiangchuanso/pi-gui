@@ -1,4 +1,6 @@
+import { appendFile } from "node:fs/promises";
 import path from "node:path";
+import { parseArgs } from "node:util";
 import { fileURLToPath } from "node:url";
 
 const GITHUB_API = "https://api.github.com";
@@ -36,6 +38,20 @@ async function readJson(response) {
   }
 }
 
+function releaseId(release, label) {
+  if (!Number.isSafeInteger(release.id) || release.id <= 0) {
+    throw new Error(`${label} did not return a valid release id`);
+  }
+  return release.id;
+}
+
+function validatePublished(release, tag) {
+  if (release?.tag_name !== tag || release?.draft !== false) {
+    throw new Error("GitHub published-release lookup returned malformed state");
+  }
+  return { state: "published", id: releaseId(release, "GitHub published-release lookup") };
+}
+
 function validateDraft(release, tag) {
   if (release?.tag_name !== tag) {
     throw new Error("GitHub release lookup returned the wrong tag");
@@ -46,10 +62,7 @@ function validateDraft(release, tag) {
     }
     throw new Error("GitHub release lookup did not return a boolean draft state");
   }
-  if (!Number.isSafeInteger(release.id) || release.id <= 0) {
-    throw new Error("GitHub release lookup did not return a valid release id");
-  }
-  return { state: "draft", id: release.id };
+  return { state: "draft", id: releaseId(release, "GitHub release lookup") };
 }
 
 export async function checkGithubReleaseState({
@@ -57,6 +70,7 @@ export async function checkGithubReleaseState({
   tag,
   token,
   requireDraft = false,
+  replaceRelease = false,
   fetchImpl = fetch,
 }) {
   if (!/^[^/\s]+\/[^/\s]+$/.test(repository)) {
@@ -67,6 +81,11 @@ export async function checkGithubReleaseState({
   }
   if (!token) {
     throw new Error("GH_TOKEN is required for an authoritative release lookup");
+  }
+  if (requireDraft && replaceRelease) {
+    throw new Error(
+      "Final publication requires the staged draft and cannot be combined with replacing a release",
+    );
   }
 
   const releaseUrl = `${GITHUB_API}/repos/${repository}/releases`;
@@ -81,11 +100,11 @@ export async function checkGithubReleaseState({
         `GitHub published-release lookup returned HTTP ${publishedResponse.status}${await responseMessage(publishedResponse)}`,
       );
     }
-    const published = await readJson(publishedResponse);
-    if (published?.tag_name !== tag || published?.draft !== false) {
-      throw new Error("GitHub published-release lookup returned malformed state");
+    const published = validatePublished(await readJson(publishedResponse), tag);
+    if (!replaceRelease) {
+      throw new Error(`Release ${tag} is already published; refusing to replace its assets`);
     }
-    throw new Error(`Release ${tag} is already published; refusing to replace its assets`);
+    return published;
   }
 
   for (let page = 1; page <= 100; page += 1) {
@@ -109,7 +128,10 @@ export async function checkGithubReleaseState({
     }
     if (matches.length === 1) {
       const draft = validateDraft(matches[0], tag);
-      if (!requireDraft) {
+      if (requireDraft) {
+        return draft;
+      }
+      if (!replaceRelease) {
         throw new Error(`Draft release ${tag} already exists; refusing to replace its assets`);
       }
       return draft;
@@ -126,21 +148,34 @@ export async function checkGithubReleaseState({
 }
 
 async function main() {
-  const args = new Set(process.argv.slice(2));
-  const unknown = [...args].filter((arg) => arg !== "--require-draft");
-  if (unknown.length > 0) {
-    throw new Error(`Unknown argument: ${unknown[0]}`);
-  }
+  const { values } = parseArgs({
+    options: {
+      "require-draft": { type: "boolean", default: false },
+      // Replacement is only ever authorized by an explicit caller, never inferred
+      // from the release state itself.
+      "replace-release": { type: "boolean", default: false },
+    },
+  });
+
+  const tag = process.env.GITHUB_REF_NAME ?? "";
   const result = await checkGithubReleaseState({
     repository: process.env.GITHUB_REPOSITORY ?? "",
-    tag: process.env.GITHUB_REF_NAME ?? "",
+    tag,
     token: process.env.GH_TOKEN ?? "",
-    requireDraft: args.has("--require-draft"),
+    requireDraft: values["require-draft"],
+    replaceRelease: values["replace-release"],
   });
+
+  const outputFile = process.env.GITHUB_OUTPUT;
+  if (outputFile) {
+    await appendFile(outputFile, `state=${result.state}\nid=${result.id ?? ""}\n`, "utf8");
+  }
   console.log(
     result.state === "draft"
-      ? `Release ${process.env.GITHUB_REF_NAME} exists as draft ${String(result.id)}`
-      : `Release ${process.env.GITHUB_REF_NAME} does not exist`,
+      ? `Release ${tag} exists as draft ${String(result.id)}`
+      : result.state === "published"
+        ? `Release ${tag} is published as ${String(result.id)}; replacement authorized`
+        : `Release ${tag} does not exist`,
   );
 }
 

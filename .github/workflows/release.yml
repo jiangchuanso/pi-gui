@@ -4,9 +4,21 @@ on:
   push:
     tags:
       - "v[0-9]*"
+  # Manual dispatch is the escape hatch to (re)run a release for an existing
+  # tag/commit after CI has already packaged it, e.g. when a prior run failed.
+  # Dispatching against a tag ref keeps GITHUB_SHA/GITHUB_REF_NAME aligned with
+  # the candidate artifacts the pipeline promotes. Replacing an existing release
+  # stays opt-in: a tag push must never destroy published assets.
+  workflow_dispatch:
+    inputs:
+      replace_release:
+        description: "Delete the existing release of this tag before staging a fresh draft. Published assets are permanently lost."
+        type: boolean
+        default: false
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: release-${{ github.ref }}
@@ -26,249 +38,101 @@ jobs:
       - name: Verify release tag and product versions
         run: node scripts/verify-release-version.mjs --tag "$GITHUB_REF_NAME"
 
-  build-macos:
-    needs: release-preflight
-    runs-on: macos-latest
-
+  # CI packages a commit when it lands on main, and only there. This pipeline
+  # promotes those bytes, so a tagged commit is never packaged a second time.
+  wait-for-ci:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
     steps:
-      - uses: actions/checkout@v7
-
-      - uses: pnpm/action-setup@v6
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: pnpm
-
-      - name: Install
-        run: pnpm install --frozen-lockfile
-
-      - name: Validate macOS signing credentials
+      - name: Wait for CI to package this commit
         env:
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          for variable in CSC_LINK CSC_KEY_PASSWORD APPLE_API_KEY APPLE_API_KEY_ID APPLE_API_ISSUER; do
-            if [[ -z "${!variable}" ]]; then
-              echo "Missing required macOS release secret: $variable" >&2
-              exit 1
+          sha="${{ github.sha }}"
+          deadline=$(( $(date +%s) + 7200 ))
+          # A tag normally follows the main push that packaged its commit, so the
+          # run either exists or appears within seconds. A commit CI never
+          # packaged has no run to wait for at all, so stop after a short grace
+          # period instead of polling for the full deadline.
+          missingDeadline=$(( $(date +%s) + 900 ))
+          while :; do
+            runs="$(gh api "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?head_sha=${sha}&exclude_pull_requests=true&per_page=100")"
+            if [ "$(echo "$runs" | jq -r '.workflow_runs | length')" = "0" ]; then
+              if [ "$(date +%s)" -gt "$missingDeadline" ]; then
+                echo "::error::ci.yml has no run for ${sha}; CI packages pushes to main, so tag a commit whose CI run succeeded, or dispatch ci.yml against this tag and rerun this release"
+                exit 1
+              fi
+              echo "ci.yml has no run for ${sha} yet; retrying in 30s..."
+              sleep 30
+              continue
             fi
+            # Any successful run of this commit packaged exactly the bytes that
+            # candidate resolution later requires, so one success is enough even
+            # when another run of the same commit is still going.
+            packaged="$(echo "$runs" | jq -r '[.workflow_runs[] | select(.conclusion == "success")][0].id // empty')"
+            if [ -n "$packaged" ]; then
+              echo "ci.yml run ${packaged} succeeded for ${sha}; proceeding to stage the release"
+              exit 0
+            fi
+            if [ "$(echo "$runs" | jq -r '[.workflow_runs[] | select(.status != "completed")] | length')" != "0" ]; then
+              if [ "$(date +%s)" -gt "$deadline" ]; then
+                echo "::error::Timed out after 120m waiting for ci.yml to package ${sha}; release aborted"
+                exit 1
+              fi
+              echo "ci.yml has not packaged ${sha} yet; retrying in 30s..."
+              sleep 30
+              continue
+            fi
+            echo "::error::Every ci.yml run of ${sha} finished without success: $(echo "$runs" | jq -r '[.workflow_runs[] | .conclusion] | join(", ")'). Rerun that commit's packaging run, then rerun this release"
+            exit 1
           done
 
-      - name: Write App Store Connect API key
-        env:
-          APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY }}
-        run: |
-          umask 077
-          APPLE_API_KEY_PATH="$RUNNER_TEMP/AuthKey.p8"
-          printf '%s' "$APPLE_API_KEY_CONTENT" > "$APPLE_API_KEY_PATH"
-          echo "APPLE_API_KEY=$APPLE_API_KEY_PATH" >> "$GITHUB_ENV"
-
-      - name: Typecheck
-        run: pnpm typecheck
-
-      - name: Verify install copy
-        run: pnpm verify:install-copy
-
-      - name: Build website
-        run: pnpm --filter @pi-gui/website run build
-
-      - name: Build desktop
-        run: pnpm --filter @pi-gui/desktop run build
-
-      - name: Package macOS
-        env:
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-        run: |
-          cd apps/desktop
-          pnpm exec electron-builder --mac \
-            --publish never \
-            "-c.extraMetadata.version=${GITHUB_REF_NAME#v}"
-
-      - name: Verify packaged runtime dependencies
-        run: pnpm --dir apps/desktop run verify:packaged-runtime-deps
-
-      - name: Verify Homebrew tap rewrite
-        run: pnpm test:homebrew-tap
-
-      - name: Smoke test packaged release zip
-        run: pnpm --dir apps/desktop run test:prod:release-zip-smoke:ci
-
-      - name: Notarize and verify final macOS artifacts
-        env:
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-        run: |
-          bash apps/desktop/scripts/finalize-macos-release.sh \
-            "$PWD/apps/desktop/release" \
-            "${GITHUB_REF_NAME#v}"
-
-      - name: Refresh update metadata from final DMG
-        run: |
-          node apps/desktop/scripts/refresh-macos-update-metadata.mjs \
-            "$PWD/apps/desktop/release" \
-            "${GITHUB_REF_NAME#v}"
-
-      - name: Stage validated macOS artifacts
-        run: |
-          node apps/desktop/scripts/release-artifacts.mjs stage \
-            --platform macos \
-            --version "${GITHUB_REF_NAME#v}" \
-            --commit "$GITHUB_SHA" \
-            --input apps/desktop/release \
-            --output apps/desktop/release-candidate
-
-      - name: Upload immutable macOS candidate
-        uses: actions/upload-artifact@v7
-        with:
-          name: release-macos-${{ github.sha }}
-          path: apps/desktop/release-candidate/
-          if-no-files-found: error
-          retention-days: 7
-          compression-level: 0
-
-  build-linux:
-    needs: release-preflight
+  # Resolve the packaging run of the tagged commit and promote its exact bytes.
+  resolve-candidate:
+    needs:
+      - release-preflight
+      - wait-for-ci
     runs-on: ubuntu-latest
 
-    steps:
-      - uses: actions/checkout@v7
+    permissions:
+      contents: read
+      actions: read
 
-      - uses: pnpm/action-setup@v6
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: pnpm
-
-      - name: Install
-        run: pnpm install --frozen-lockfile
-
-      - name: Typecheck
-        run: pnpm typecheck
-
-      - name: Package Linux AppImage and deb
-        run: |
-          cd apps/desktop
-          pnpm run build
-          node scripts/run-electron-builder.mjs --linux \
-            --publish never \
-            "-c.extraMetadata.version=${GITHUB_REF_NAME#v}"
-
-      - name: Verify packaged runtime dependencies
-        run: pnpm --dir apps/desktop run verify:packaged-runtime-deps:linux
-
-      - name: Verify Linux packages
-        run: |
-          bash apps/desktop/scripts/verify-linux-release.sh \
-            --install \
-            "$PWD/apps/desktop/release" \
-            "${GITHUB_REF_NAME#v}" \
-            "$PWD/apps/desktop/release-proof/linux-build"
-
-      - name: Stage validated Linux artifacts
-        run: |
-          node apps/desktop/scripts/release-artifacts.mjs stage \
-            --platform linux \
-            --version "${GITHUB_REF_NAME#v}" \
-            --commit "$GITHUB_SHA" \
-            --input apps/desktop/release \
-            --output apps/desktop/release-candidate
-
-      - name: Upload immutable Linux candidate
-        uses: actions/upload-artifact@v7
-        with:
-          name: release-linux-${{ github.sha }}
-          path: apps/desktop/release-candidate/
-          if-no-files-found: error
-          retention-days: 7
-          compression-level: 0
-
-      - name: Upload Linux package proof
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: linux-package-proof-${{ github.sha }}
-          path: apps/desktop/release-proof/linux-build/
-          if-no-files-found: warn
-          retention-days: 14
-
-  build-windows:
-    needs: release-preflight
-    runs-on: windows-latest
+    outputs:
+      run-id: ${{ steps.resolve.outputs.run-id }}
 
     steps:
       - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v6
-
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-          cache: pnpm
 
-      - name: Install
-        run: pnpm install --frozen-lockfile
-
-      - name: Typecheck
-        run: pnpm typecheck
-
-      - name: Package Windows
-        shell: bash
+      - name: Resolve the CI-packaged candidates
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          cd apps/desktop
-          pnpm run build
-          node scripts/package-windows.mjs \
-            --win \
-            --publish never \
-            --config.npmRebuild=false \
-            "-c.extraMetadata.version=${GITHUB_REF_NAME#v}"
-
-      - name: Verify packaged runtime dependencies
-        run: pnpm --dir apps/desktop run verify:packaged-runtime-deps:windows
-
-      - name: Verify Windows packages and architecture
-        shell: pwsh
-        run: |
-          ./apps/desktop/scripts/verify-windows-release.ps1 `
-            -ReleaseDir "$PWD/apps/desktop/release" `
-            -Version "$($env:GITHUB_REF_NAME -replace '^v', '')" `
-            -PackagedApp "$PWD/apps/desktop/release/win-unpacked/pi-gui.exe" `
-            -SmokePackages
-
-      - name: Stage validated Windows artifacts
-        shell: bash
-        run: |
-          node apps/desktop/scripts/release-artifacts.mjs stage \
-            --platform windows \
-            --version "${GITHUB_REF_NAME#v}" \
+          node apps/desktop/scripts/resolve-ci-candidate.mjs \
+            --workflow ci.yml \
             --commit "$GITHUB_SHA" \
-            --input apps/desktop/release \
-            --output apps/desktop/release-candidate
-
-      - name: Upload immutable Windows candidate
-        uses: actions/upload-artifact@v7
-        with:
-          name: release-windows-${{ github.sha }}
-          path: apps/desktop/release-candidate/
-          if-no-files-found: error
-          retention-days: 7
-          compression-level: 0
+            --artifact "ci-release-linux-$GITHUB_SHA" \
+            --artifact "ci-release-linux-arm64-$GITHUB_SHA" \
+            --artifact "ci-release-windows-$GITHUB_SHA"
 
   stage-draft:
     needs:
-      - build-macos
-      - build-linux
-      - build-windows
+      - resolve-candidate
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: read
+    # A step's `if` can only read the job environment, so the authorization to
+    # replace an existing release is resolved here from the dispatch input. A tag
+    # push leaves the input empty and therefore always fails closed.
+    env:
+      REPLACE_RELEASE: ${{ inputs.replace_release }}
 
     steps:
       - uses: actions/checkout@v7
@@ -283,12 +147,14 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      - name: Download immutable platform candidates
+      - name: Download the CI-packaged candidates
         uses: actions/download-artifact@v8
         with:
-          pattern: release-*-${{ github.sha }}
+          pattern: ci-release-*-${{ github.sha }}
           path: release-candidate
           merge-multiple: true
+          run-id: ${{ needs.resolve-candidate.outputs.run-id }}
+          github-token: ${{ github.token }}
 
       - name: Validate combined release candidate
         run: |
@@ -299,9 +165,27 @@ jobs:
             --input release-candidate
 
       - name: Check existing release state
+        id: release-state
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node apps/desktop/scripts/github-release-state.mjs
+        run: |
+          if [ "$REPLACE_RELEASE" = "true" ]; then
+            node apps/desktop/scripts/github-release-state.mjs --replace-release
+          else
+            node apps/desktop/scripts/github-release-state.mjs
+          fi
+
+      - name: Replace the existing release
+        if: ${{ env.REPLACE_RELEASE == 'true' && steps.release-state.outputs.state != 'absent' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "Deleting the existing ${{ steps.release-state.outputs.state }} release for ${GITHUB_REF_NAME} before staging its replacement"
+          # Delete by id so a draft and a published release are both handled, and
+          # never the tag itself: the tagged commit stays the release's target.
+          gh api --method DELETE "repos/${GITHUB_REPOSITORY}/releases/${{ steps.release-state.outputs.id }}"
+          # Fail closed unless the tag now has no release at all.
+          node apps/desktop/scripts/github-release-state.mjs
 
       - name: Upload validated draft
         uses: softprops/action-gh-release@v3
@@ -311,46 +195,6 @@ jobs:
           prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') || contains(github.ref_name, 'rc') }}
           generate_release_notes: true
           fail_on_unmatched_files: true
-
-  verify-draft-macos:
-    needs: stage-draft
-    runs-on: macos-latest
-    # GitHub requires push access even to read unpublished draft assets.
-    permissions:
-      contents: write
-
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: pnpm/action-setup@v6
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: pnpm
-
-      - name: Install
-        run: pnpm install --frozen-lockfile
-
-      - name: Download draft release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release download "$GITHUB_REF_NAME" --dir draft-release
-
-      - name: Verify draft manifests and bytes
-        run: |
-          node apps/desktop/scripts/release-artifacts.mjs verify \
-            --platform all \
-            --version "${GITHUB_REF_NAME#v}" \
-            --commit "$GITHUB_SHA" \
-            --input draft-release
-
-      - name: Verify draft macOS trust
-        run: |
-          bash apps/desktop/scripts/finalize-macos-release.sh \
-            --verify-only \
-            "$PWD/draft-release" \
-            "${GITHUB_REF_NAME#v}"
 
   verify-draft-linux:
     needs: stage-draft
@@ -392,6 +236,47 @@ jobs:
             "$PWD/draft-release" \
             "${GITHUB_REF_NAME#v}" \
             "$RUNNER_TEMP/draft-linux-proof"
+
+  verify-draft-linux-arm64:
+    needs: stage-draft
+    runs-on: ubuntu-24.04-arm
+    # GitHub requires push access even to read unpublished draft assets.
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Download draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download "$GITHUB_REF_NAME" --dir draft-release
+
+      - name: Verify draft manifests and bytes
+        run: |
+          node apps/desktop/scripts/release-artifacts.mjs verify \
+            --platform all \
+            --version "${GITHUB_REF_NAME#v}" \
+            --commit "$GITHUB_SHA" \
+            --input draft-release
+
+      - name: Verify draft Linux arm64 packages
+        run: |
+          bash apps/desktop/scripts/verify-linux-release.sh \
+            --install \
+            "$PWD/draft-release" \
+            "${GITHUB_REF_NAME#v}" \
+            "$RUNNER_TEMP/draft-linux-arm64-proof"
 
   verify-draft-windows:
     needs: stage-draft
@@ -438,8 +323,8 @@ jobs:
 
   publish:
     needs:
-      - verify-draft-macos
       - verify-draft-linux
+      - verify-draft-linux-arm64
       - verify-draft-windows
     runs-on: ubuntu-latest
     environment: release
@@ -493,43 +378,6 @@ jobs:
             --commit "$GITHUB_SHA" \
             --input published-release
 
-  verify-published-macos:
-    needs: publish
-    runs-on: macos-latest
-
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: pnpm/action-setup@v6
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: pnpm
-
-      - name: Install
-        run: pnpm install --frozen-lockfile
-
-      - name: Download published release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release download "$GITHUB_REF_NAME" --dir published-release
-
-      - name: Verify published manifests and bytes
-        run: |
-          node apps/desktop/scripts/release-artifacts.mjs verify \
-            --platform all \
-            --version "${GITHUB_REF_NAME#v}" \
-            --commit "$GITHUB_SHA" \
-            --input published-release
-
-      - name: Verify published macOS trust
-        run: |
-          bash apps/desktop/scripts/finalize-macos-release.sh \
-            --verify-only \
-            "$PWD/published-release" \
-            "${GITHUB_REF_NAME#v}"
-
   verify-published-linux:
     needs: publish
     runs-on: ubuntu-latest
@@ -567,6 +415,44 @@ jobs:
             "$PWD/published-release" \
             "${GITHUB_REF_NAME#v}" \
             "$RUNNER_TEMP/published-linux-proof"
+
+  verify-published-linux-arm64:
+    needs: publish
+    runs-on: ubuntu-24.04-arm
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Download published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download "$GITHUB_REF_NAME" --dir published-release
+
+      - name: Verify published manifests and bytes
+        run: |
+          node apps/desktop/scripts/release-artifacts.mjs verify \
+            --platform all \
+            --version "${GITHUB_REF_NAME#v}" \
+            --commit "$GITHUB_SHA" \
+            --input published-release
+
+      - name: Verify published Linux arm64 packages
+        run: |
+          bash apps/desktop/scripts/verify-linux-release.sh \
+            --install \
+            "$PWD/published-release" \
+            "${GITHUB_REF_NAME#v}" \
+            "$RUNNER_TEMP/published-linux-arm64-proof"
 
   verify-published-windows:
     needs: publish
@@ -607,63 +493,3 @@ jobs:
             -ReleaseDir "$PWD/published-release" `
             -Version "$($env:GITHUB_REF_NAME -replace '^v', '')" `
             -SmokePackages
-
-  sync-homebrew:
-    needs:
-      - verify-published-macos
-      - verify-published-linux
-      - verify-published-windows
-    runs-on: macos-latest
-
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: pnpm/action-setup@v6
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: pnpm
-
-      - name: Install
-        run: pnpm install --frozen-lockfile
-
-      - name: Validate Homebrew credential
-        env:
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-        run: |
-          if [[ -z "$HOMEBREW_TAP_TOKEN" ]]; then
-            echo "Missing required release secret: HOMEBREW_TAP_TOKEN" >&2
-            exit 1
-          fi
-
-      - name: Download published DMG
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          mkdir release-download
-          gh release download "$GITHUB_REF_NAME" \
-            --pattern "pi-gui-${GITHUB_REF_NAME#v}-arm64.dmg" \
-            --dir release-download
-
-      - name: Checkout Homebrew tap
-        uses: actions/checkout@v7
-        with:
-          repository: minghinmatthewlam/homebrew-tap
-          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          path: homebrew-tap
-          fetch-depth: 0
-
-      - name: Sync Homebrew tap
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          pnpm release:homebrew-sync \
-            --tap-dir "$PWD/homebrew-tap" \
-            --version "${GITHUB_REF_NAME#v}" \
-            --tag "$GITHUB_REF_NAME" \
-            --github-repo "$GITHUB_REPOSITORY" \
-            --asset-name "pi-gui-${GITHUB_REF_NAME#v}-arm64.dmg" \
-            --dmg-path "$PWD/release-download/pi-gui-${GITHUB_REF_NAME#v}-arm64.dmg" \
-            --commit \
-            --push
