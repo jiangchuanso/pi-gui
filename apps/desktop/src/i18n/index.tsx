@@ -7,24 +7,38 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { defaultLocale, type AppLocale } from "./catalog";
 import {
   detectSystemLanguages,
   readStoredLocale,
   resolveLocale,
   writeStoredLocale,
-  type AppLocale,
   type LocalePreference,
-} from "./locale";
+} from "./preference";
 import { translate, translatorFor, type Translate } from "./translate";
 
-export { appLocales, localePreferences, LOCALE_STORAGE_KEY, resolveLocale } from "./locale";
-export type { AppLocale, LocalePreference } from "./locale";
+export {
+  LOCALES,
+  appLocaleIds,
+  defaultLocale,
+  localeDefinition,
+  matchSystemLocale,
+  type AppLocale,
+  type LocaleDefinition,
+  type MessageKey,
+  type Messages,
+} from "./catalog";
+export {
+  LOCALE_STORAGE_KEY,
+  localePreferences,
+  resolveLocale,
+  type LocalePreference,
+} from "./preference";
 export {
   catalogs,
   interpolate,
   translate,
   translatorFor,
-  type MessageKey,
   type Translate,
   type TranslateParams,
 } from "./translate";
@@ -38,7 +52,7 @@ interface I18nContextValue {
 }
 
 const fallbackValue: I18nContextValue = {
-  locale: "en",
+  locale: defaultLocale,
   preference: "system",
   setPreference: () => {},
   t: translate,
@@ -76,7 +90,7 @@ export function I18nProvider({
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }
 
-/** Falls back to English so components stay renderable outside the provider (unit specs). */
+/** Falls back to the default locale so components stay renderable outside the provider. */
 export function useI18n(): I18nContextValue {
   return useContext(I18nContext) ?? fallbackValue;
 }

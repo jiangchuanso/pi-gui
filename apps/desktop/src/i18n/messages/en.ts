@@ -104,8 +104,6 @@ export const en = {
     "Follow the system language, or pick the language pi-gui shows.",
   "settings.appearance.language.label": "Language",
   "settings.appearance.language.system": "Follow system",
-  "settings.appearance.language.en": "English",
-  "settings.appearance.language.zhCN": "简体中文",
   "settings.appearance.colorPreset.title": "Color preset",
   "settings.appearance.colorPreset.label": "Color preset",
   "settings.appearance.transparency.title": "Window transparency",
@@ -245,3 +243,6 @@ export const en = {
 } as const;
 
 export type MessageKey = keyof typeof en;
+
+/** The shape a locale catalog must satisfy: every key present, values widened to `string`. */
+export type Messages = Record<MessageKey, string>;

@@ -1,9 +1,9 @@
 import type { ThemeMode, ThemePresetId } from "../../../contracts/desktop-state";
-import { SettingsSelect, SettingsSwitch } from "./settings-controls";
+import { SettingsSelect, SettingsSwitch, type SettingsSegmentedOption } from "./settings-controls";
 import { SettingsGroup, SettingsRow } from "./settings-utils";
 import type { CSSProperties } from "react";
 import { themePreset, themePresets, themeSwatches, themeTokensFor } from "../../../contracts/theme";
-import { useI18n, type MessageKey } from "../../i18n";
+import { LOCALES, useI18n, type LocalePreference, type MessageKey } from "../../i18n";
 import { useActiveTheme } from "../../ui/active-theme";
 
 interface SettingsAppearanceSectionProps {
@@ -42,6 +42,11 @@ export function SettingsAppearanceSection({
     { mode: "light", label: "settings.appearance.mode.light" },
     { mode: "dark", label: "settings.appearance.mode.dark" },
   ];
+  // Registered locales label themselves, so a new language needs no copy or edits here.
+  const languageOptions: readonly SettingsSegmentedOption<LocalePreference>[] = [
+    { value: "system", label: t("settings.appearance.language.system") },
+    ...LOCALES.map((locale) => ({ value: locale.id, label: locale.label })),
+  ];
   return (
     <>
       <SettingsGroup>
@@ -51,11 +56,7 @@ export function SettingsAppearanceSection({
         >
           <SettingsSelect
             label={t("settings.appearance.language.label")}
-            options={[
-              { value: "system", label: t("settings.appearance.language.system") },
-              { value: "en", label: t("settings.appearance.language.en") },
-              { value: "zh-CN", label: t("settings.appearance.language.zhCN") },
-            ]}
+            options={languageOptions}
             value={preference}
             onChange={setPreference}
           />

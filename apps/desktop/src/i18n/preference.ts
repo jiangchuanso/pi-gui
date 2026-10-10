@@ -1,17 +1,16 @@
 /*
- * Locale preference resolution for the renderer.
+ * The user's locale preference and how it becomes a concrete locale. "system"
+ * follows the OS language on every launch; anything else is an id from the registry.
  *
- * Browser-safe: the renderer owns the preference (Settings can change it live) and
- * remembers it in this profile's localStorage, next to the other renderer-only
- * layout preferences. `system` follows the OS language on every launch.
+ * Browser-safe: the renderer owns the preference and remembers it in this profile's
+ * localStorage, next to the other renderer-only layout preferences.
  */
+import { appLocaleIds, defaultLocale, matchSystemLocale, type AppLocale } from "./catalog";
 
-export const localePreferences = ["system", "en", "zh-CN"] as const;
-export type LocalePreference = (typeof localePreferences)[number];
+export type LocalePreference = "system" | AppLocale;
 
-/** Locales the app ships translated copy for. */
-export const appLocales = ["en", "zh-CN"] as const;
-export type AppLocale = (typeof appLocales)[number];
+/** "system" plus every registered locale, in registry order. */
+export const localePreferences: readonly LocalePreference[] = ["system", ...appLocaleIds];
 
 export const LOCALE_STORAGE_KEY = "pi-gui:locale";
 
@@ -32,7 +31,6 @@ export function detectSystemLanguages(): readonly string[] {
   return language ? [language] : [];
 }
 
-/** Chinese variants (zh, zh-CN, zh-Hans, zh-TW…) all read our Simplified copy for now. */
 export function resolveLocale(
   preference: LocalePreference,
   systemLanguages: readonly string[],
@@ -40,11 +38,14 @@ export function resolveLocale(
   if (preference !== "system") {
     return preference;
   }
-  const firstMatch = systemLanguages.find((tag) => tag.trim().length > 0);
-  if (!firstMatch) {
-    return "en";
+  for (const languageTag of systemLanguages) {
+    const match = matchSystemLocale(languageTag);
+    if (match) {
+      return match;
+    }
   }
-  return firstMatch.toLowerCase().startsWith("zh") ? "zh-CN" : "en";
+  // An unregistered system language reads the default locale.
+  return defaultLocale;
 }
 
 export function readStoredLocale(): LocalePreference {

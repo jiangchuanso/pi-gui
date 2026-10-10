@@ -1,7 +1,7 @@
-import type { MessageKey } from "./en";
+import type { Messages } from "./en";
 
-/** Simplified Chinese copy. The `Record<MessageKey, string>` type keeps it in sync with `en`. */
-export const zhCN: Record<MessageKey, string> = {
+/** Simplified Chinese copy. The `Messages` type keeps every key in sync with `en`. */
+export const zhCN: Messages = {
   "topbar.openFolderToBegin": "打开文件夹以开始",
   "topbar.newThread": "新会话",
   "topbar.toggleSidePanel": "切换侧边面板",
@@ -91,8 +91,6 @@ export const zhCN: Record<MessageKey, string> = {
   "settings.appearance.language.description": "跟随系统语言，或指定 pi-gui 显示的语言。",
   "settings.appearance.language.label": "语言",
   "settings.appearance.language.system": "跟随系统",
-  "settings.appearance.language.en": "English",
-  "settings.appearance.language.zhCN": "简体中文",
   "settings.appearance.colorPreset.title": "配色方案",
   "settings.appearance.colorPreset.label": "配色方案",
   "settings.appearance.transparency.title": "窗口透明",
