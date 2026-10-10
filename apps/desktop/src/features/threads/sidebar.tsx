@@ -1696,9 +1696,7 @@ const ThreadSessionRow = forwardRef<HTMLDivElement, ThreadSessionRowProps>(
                 </button>
                 {threadMenu && !overlay && !menuOpen ? (
                   <span className="shortcut-tooltip session-row__tooltip" role="tooltip">
-                    <span>
-                      {archived ? t("sidebar.restoreThread") : t("sidebar.archiveThread")}
-                    </span>
+                    <span>{archived ? t("sidebar.restoreThread") : t("sidebar.archiveThread")}</span>
                     {archived ? null : <kbd>{archiveThreadShortcut(threadMenu.platform)}</kbd>}
                   </span>
                 ) : null}

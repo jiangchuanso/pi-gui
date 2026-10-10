@@ -1061,7 +1061,9 @@ export default function App() {
                     .filter(Boolean)
                     .at(-1);
                   return workspaceName
-                    ? t("app.startupDiagnostics.workspaceUnavailable", { workspace: workspaceName })
+                    ? t("app.startupDiagnostics.workspaceUnavailable", {
+                        workspace: workspaceName,
+                      })
                     : diagnostic.message;
                 })
                 .join(" ")}
@@ -1156,7 +1158,9 @@ export default function App() {
                       role="status"
                       data-testid="schema-skew-notice"
                     >
-                      <span className="schema-skew-notice__text">{t("app.schemaSkew.message")}</span>
+                      <span className="schema-skew-notice__text">
+                        {t("app.schemaSkew.message")}
+                      </span>
                       <button
                         type="button"
                         className="schema-skew-notice__dismiss"

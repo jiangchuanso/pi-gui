@@ -84,7 +84,8 @@ export function settingsSections(t: Translate): readonly SettingsSectionDefiniti
       group: t("settings.group.agent"),
       icon: <PlugIcon />,
       keywords: ["login", "logout", "oauth", "api key", "auth", "custom endpoint"],
-      description: (workspaceName) => t("settings.section.providers.description", { workspace: workspaceName }),
+      description: (workspaceName) =>
+        t("settings.section.providers.description", { workspace: workspaceName }),
       needsWorkspace: true,
     },
     {

@@ -122,9 +122,7 @@ export function SettingsView({
             <div className="settings-row">
               <div className="settings-row__label">
                 <div className="settings-row__title">{t("settings.selectWorkspace.title")}</div>
-                <div className="settings-row__description">
-                  {t("settings.selectWorkspace.body")}
-                </div>
+                <div className="settings-row__description">{t("settings.selectWorkspace.body")}</div>
               </div>
             </div>
           </div>
