@@ -123,9 +123,11 @@ skills are shared with the pi CLI.
 
 Choose **Settings → Appearance → Language** to use English, 简体中文, 日本語, or follow
 the system language. The choice is remembered for this app profile. Language packs
-translate the registered interface copy; file contents, conversation text, provider
-names, and code remain unchanged. Native menus and surfaces not yet connected to
-the translation layer still use English.
+cover settings (including Models, Providers, custom endpoints and MCP), skills and
+extensions, new threads and the composer, command palettes, and the Files, Review
+and Terminal panels. File contents, conversation text, provider names, code, and
+descriptions supplied by skills and extensions remain unchanged. Native menus
+and messages returned by external services still use their original language.
 
 ## Architecture
 

@@ -202,10 +202,14 @@ export default function App() {
     (selectedDefaultEnabled ? selectedModelRuntime?.settings.defaultModelId : undefined);
   const resolvedSessionThinkingLevel =
     selectedSession?.config?.thinkingLevel ?? selectedModelRuntime?.settings.defaultThinkingLevel;
-  const selectedSessionModelOnboarding = deriveModelOnboardingState(selectedModelRuntime, {
-    provider: resolvedSessionProvider,
-    modelId: resolvedSessionModelId,
-  });
+  const selectedSessionModelOnboarding = deriveModelOnboardingState(
+    selectedModelRuntime,
+    {
+      provider: resolvedSessionProvider,
+      modelId: resolvedSessionModelId,
+    },
+    t,
+  );
   const queuedComposerMessages = snapshot?.queuedComposerMessages ?? [];
   const editingQueuedMessageId = snapshot?.editingQueuedMessageId;
   const runningLabel = useRunningLabel(
@@ -339,8 +343,8 @@ export default function App() {
     ],
   );
   const selectedExtensionDock = useMemo(
-    () => buildExtensionDockModel(selectedExtensionUi),
-    [selectedExtensionUi],
+    () => buildExtensionDockModel(selectedExtensionUi, t),
+    [selectedExtensionUi, t],
   );
   const shownExtensionDock = useDismissibleExtensionDock(
     selectedSessionKey,

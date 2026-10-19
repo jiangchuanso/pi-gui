@@ -14,7 +14,7 @@ import {
   buildCommandSections,
   buildFileSections,
   buildListSection,
-  COMMAND_FILTERS,
+  commandFilters,
   FILE_RESULT_LIMIT,
   splitPath,
   type CommandFilter,
@@ -120,7 +120,11 @@ export function CommandPaletteSurface({
         .filter(Boolean)
         .join(" · "),
       icon: <ChatIcon />,
-      hint: isCurrent ? "Current" : thread.session.status === "running" ? "Running" : undefined,
+      hint: isCurrent
+        ? t("palette.current")
+        : thread.session.status === "running"
+          ? t("palette.running")
+          : undefined,
       run: () => {
         onClose();
         onOpenThread(target);
@@ -155,46 +159,51 @@ export function CommandPaletteSurface({
   let sections: readonly PaletteSection[];
   let emptyText: string;
   if (mode === "files") {
-    label = "Go to file";
-    placeholder = fileScope ? `Search files in ${fileScope.label}` : "Search files";
+    label = t("settings.shortcuts.goToFile");
+    placeholder = fileScope
+      ? t("palette.searchFilesIn", { label: fileScope.label })
+      : t("palette.searchFiles");
     sections =
       fileScope && files
-        ? buildFileSections({
-            query: fileQuery,
-            ranked: rankedFiles,
-            openTabs: fileScope.openTabs,
-            toCandidate: (path) => {
-              const { name, directory } = splitPath(path);
-              return {
-                id: `file:${path}`,
-                title: name,
-                detail: directory || undefined,
-                icon: <FileIcon />,
-                run: () => {
-                  onClose();
-                  onOpenFile(path);
-                },
-              };
+        ? buildFileSections(
+            {
+              query: fileQuery,
+              ranked: rankedFiles,
+              openTabs: fileScope.openTabs,
+              toCandidate: (path) => {
+                const { name, directory } = splitPath(path);
+                return {
+                  id: `file:${path}`,
+                  title: name,
+                  detail: directory || undefined,
+                  icon: <FileIcon />,
+                  run: () => {
+                    onClose();
+                    onOpenFile(path);
+                  },
+                };
+              },
             },
-          })
+            t,
+          )
         : [];
     emptyText = !fileScope
-      ? "Open a thread to search its files."
+      ? t("palette.openThreadToSearch")
       : listing.status === "loading"
-        ? "Loading files…"
+        ? t("palette.loadingFiles")
         : listing.status === "error"
-          ? "Couldn't load files."
+          ? t("palette.loadFailed")
           : query !== fileQuery
-            ? "Searching…"
+            ? t("palette.searching")
             : query.trim()
-              ? "No matching files."
-              : `Type to search ${formatNumber(locale, files?.length ?? 0)} files.`;
+              ? t("palette.noFiles")
+              : t("palette.typeToSearch", { value: formatNumber(locale, files?.length ?? 0) });
   } else if (mode === "models") {
-    label = "Switch model";
-    placeholder = "Switch model";
+    label = t("palette.switchModelTitle");
+    placeholder = t("palette.switchModelTitle");
     sections = buildListSection({
       id: "models",
-      label: "Models",
+      label: t("settings.nav.models"),
       query,
       candidates: (modelScope?.options ?? []).map((option) => ({
         id: `model:${option.providerId}/${option.modelId}`,
@@ -203,7 +212,7 @@ export function CommandPaletteSurface({
         hint:
           option.providerId === modelScope?.currentProvider &&
           option.modelId === modelScope.currentModelId
-            ? "Current"
+            ? t("palette.current")
             : undefined,
         run: () => {
           onClose();
@@ -211,25 +220,28 @@ export function CommandPaletteSurface({
         },
       })),
     });
-    emptyText = modelScope?.options.length ? "No matching models." : "No models available.";
+    emptyText = modelScope?.options.length ? t("palette.noModels") : t("palette.noModelsAvailable");
   } else {
-    label = "Command palette";
-    placeholder = "Search chats, workspaces and actions";
-    sections = buildCommandSections({
-      query,
-      filter,
-      chats: chatCandidates,
-      workspaces: workspaceCandidates,
-      actions: actionCandidates,
-    });
-    emptyText = query.trim() ? "No matches." : "Nothing here yet.";
+    label = t("settings.shortcuts.commandPalette");
+    placeholder = t("palette.searchAll");
+    sections = buildCommandSections(
+      {
+        query,
+        filter,
+        chats: chatCandidates,
+        workspaces: workspaceCandidates,
+        actions: actionCandidates,
+      },
+      t,
+    );
+    emptyText = query.trim() ? t("palette.noMatches") : t("palette.empty");
   }
 
   return (
     <CommandPalette
       activeFilter={mode === "commands" ? filter : undefined}
       emptyText={emptyText}
-      filters={mode === "commands" ? COMMAND_FILTERS : undefined}
+      filters={mode === "commands" ? commandFilters(t) : undefined}
       label={label}
       placeholder={placeholder}
       query={query}
