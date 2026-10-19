@@ -6,6 +6,26 @@
 import type { PluralVariantKey } from "../plural";
 
 export const en = {
+  "files.explorer.label": "File explorer",
+  "files.explorer.filter": "Filter files",
+  "files.explorer.filterPlaceholder": "Filter files…",
+  "files.explorer.refresh": "Refresh",
+  "files.explorer.loading": "Loading files...",
+  "files.explorer.empty": "No indexed files",
+  "files.explorer.noMatches": "No matching files",
+  "files.explorer.loadFailed": "Couldn't load files",
+  "files.editor.label": "Open file",
+  "files.editor.close": "Close {name}",
+  "files.editor.viewSource": "View source",
+  "files.editor.copy": "Copy file",
+  "files.editor.open": "Open",
+  "files.editor.path": "File path",
+  "files.editor.selectFile": "Select a file from the explorer.",
+  "files.editor.loading": "Loading file...",
+  "files.editor.noPreview": "No preview available.",
+  "files.editor.binary": "Binary or directory preview is not available.",
+  "files.editor.truncated": "Preview truncated",
+
   "topbar.openFolderToBegin": "Open a folder to begin",
   "topbar.newThread": "New thread",
   "topbar.toggleSidePanel": "Toggle side panel",

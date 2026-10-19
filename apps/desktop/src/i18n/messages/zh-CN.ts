@@ -2,6 +2,26 @@ import type { Messages } from "./en";
 
 /** Simplified Chinese copy. The `Messages` type keeps every key in sync with `en`. */
 export const zhCN: Messages = {
+  "files.explorer.label": "文件浏览器",
+  "files.explorer.filter": "筛选文件",
+  "files.explorer.filterPlaceholder": "筛选文件…",
+  "files.explorer.refresh": "刷新",
+  "files.explorer.loading": "正在加载文件…",
+  "files.explorer.empty": "没有已索引的文件",
+  "files.explorer.noMatches": "没有匹配的文件",
+  "files.explorer.loadFailed": "无法加载文件",
+  "files.editor.label": "打开的文件",
+  "files.editor.close": "关闭 {name}",
+  "files.editor.viewSource": "查看源代码",
+  "files.editor.copy": "复制文件",
+  "files.editor.open": "打开",
+  "files.editor.path": "文件路径",
+  "files.editor.selectFile": "从文件浏览器中选择一个文件。",
+  "files.editor.loading": "正在加载文件…",
+  "files.editor.noPreview": "没有可用的预览。",
+  "files.editor.binary": "无法预览二进制文件或目录。",
+  "files.editor.truncated": "预览内容已截断",
+
   "topbar.openFolderToBegin": "打开文件夹以开始",
   "topbar.newThread": "新会话",
   "topbar.toggleSidePanel": "切换侧边面板",

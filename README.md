@@ -119,6 +119,14 @@ Building from source is for contributors; see [Development](#development).
 pi-gui reads and writes pi's own session files and settings, so threads, credentials and
 skills are shared with the pi CLI.
 
+### Interface language
+
+Choose **Settings → Appearance → Language** to use English, 简体中文, 日本語, or follow
+the system language. The choice is remembered for this app profile. Language packs
+translate the registered interface copy; file contents, conversation text, provider
+names, and code remain unchanged. Native menus and surfaces not yet connected to
+the translation layer still use English.
+
 ## Architecture
 
 pi-gui is an Electron app with a tight main, preload and renderer boundary, on top of the pi
