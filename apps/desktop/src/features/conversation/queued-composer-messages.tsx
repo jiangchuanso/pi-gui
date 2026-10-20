@@ -38,9 +38,9 @@ export function QueuedComposerMessages({
     <div className="queued-composer-messages" data-testid="queued-composer-messages">
       {editingQueuedMessageId ? (
         <div className="queued-composer-messages__editing" data-testid="queued-composer-editing">
-          <span>Editing queued message</span>
+          <span>{t("ui.editingQueuedMessage")}</span>
           <button type="button" onClick={onCancelEdit}>
-            Cancel
+            {t("scheduledTasks.editor.cancel")}
           </button>
         </div>
       ) : null}
@@ -57,21 +57,21 @@ export function QueuedComposerMessages({
             <div className="queued-composer-message__actions">
               {message.mode !== "steer" ? (
                 <button type="button" onClick={() => onSteerMessage(message.id)}>
-                  Steer
+                  {t("ui.steer")}
                 </button>
               ) : null}
               {/* Its annotations cannot be reattached to the transcript, so it is not editable. */}
               {parseAnnotatedPrompt(message.text) ? null : (
                 <button type="button" onClick={() => onEditMessage(message.id)}>
-                  Edit
+                  {t("scheduledTasks.row.edit")}
                 </button>
               )}
               <button
-                aria-label={`Delete queued message ${message.text || message.id}`}
+                aria-label={t("ui.deleteQueuedMessageValue", { value: message.text || message.id })}
                 type="button"
                 onClick={() => onRemoveMessage(message.id)}
               >
-                Delete
+                {t("scheduledTasks.row.delete")}
               </button>
             </div>
           </div>

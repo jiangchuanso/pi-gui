@@ -102,6 +102,7 @@ test("interpolate substitutes known names and leaves unknown ones alone", () => 
 test("a translator reads its own catalog, and falls back to the default locale", () => {
   expect(translatorFor("en")("topbar.newThread")).toBe("New thread");
   expect(translatorFor("zh-CN")("topbar.newThread")).toBe("新会话");
+  expect(translatorFor("ja")("topbar.newThread")).toBe("新しいスレッド");
   const sections = translatorFor("en")("secondarySurface.sectionsLabel", { title: "Settings" });
   expect(sections).toBe("Settings sections");
   // A half-translated catalog renders the default locale's copy instead of `undefined`…
@@ -114,6 +115,8 @@ test("resolveLocale follows the system language unless a locale is chosen", () =
   const cases: readonly (readonly [LocalePreference, readonly string[], AppLocale])[] = [
     ["system", ["zh-CN", "en-US"], "zh-CN"],
     ["system", ["zh-Hans-CN"], "zh-CN"],
+    ["system", ["ja-JP", "en-US"], "ja"],
+    ["system", ["JA", "zh-CN"], "ja"],
     ["system", ["en-US", "zh-CN"], "en"],
     ["system", [], "en"],
     // A language we do not ship reads the default locale. "xx" is reserved for no
@@ -121,6 +124,7 @@ test("resolveLocale follows the system language unless a locale is chosen", () =
     ["system", ["xx-XX"], "en"],
     ["en", ["zh-CN"], "en"],
     ["zh-CN", ["en-US"], "zh-CN"],
+    ["ja", ["en-US"], "ja"],
   ];
   for (const [preference, systemLanguages, expected] of cases) {
     const reason = `${preference} ${systemLanguages}`;
@@ -138,6 +142,13 @@ test("a counted message picks the CLDR plural form of the active locale", () => 
   const chinese = translatorFor("zh-CN");
   expect(chinese("turnChanges.editedFiles", { count: 1 })).toBe("已编辑 1 个文件");
   expect(chinese("turnChanges.editedFiles", { count: 4 })).toBe("已编辑 4 个文件");
+  const japanese = translatorFor("ja");
+  for (const count of [0, 1, 4]) {
+    expect(japanese("turnChanges.editedFiles", { count })).toBe(`${count}個のファイルを編集`);
+  }
+  expect(japanese("files.editor.close", { name: "日本語 {name}.md" })).toBe(
+    "日本語 {name}.md を閉じる",
+  );
   // A count on a string without plural forms still resolves the plain message.
   expect(english("sidebar.worktree", { count: 3 })).toBe("Worktree");
 });
@@ -195,6 +206,8 @@ test("every locale declares a writing direction, defaulting to left-to-right", (
 test("system-tag matching is registered per locale, not hardcoded", () => {
   expect(matchSystemLocale("ZH-hant")).toBe("zh-CN");
   expect(matchSystemLocale("  en-GB  ")).toBe("en");
+  expect(matchSystemLocale(" ja-JP ")).toBe("ja");
+  expect(matchSystemLocale("javanese")).toBeUndefined();
   expect(matchSystemLocale("de-DE")).toBeUndefined();
   expect(matchSystemLocale("")).toBeUndefined();
 });
