@@ -171,8 +171,7 @@ export function ModelSelector({
             disabled={disabled}
             onClick={() => setOpen(open === "thinking" ? "none" : "thinking")}
           >
-            {thinkingOptions(t).find((option) => option.value === thinkingLevel)?.label ??
-              thinkingLevel}
+            {thinkingLevel}
           </button>
           {open === "thinking" ? (
             <div
