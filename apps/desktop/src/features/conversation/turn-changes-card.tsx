@@ -33,7 +33,7 @@ export function TurnChangesCard({
   return (
     <section
       className="turn-changes"
-      aria-label="Files changed in this turn"
+      aria-label={t("ui.filesChangedInThisTurn")}
       data-testid="turn-changes"
     >
       <header className="turn-changes__header">
@@ -52,7 +52,7 @@ export function TurnChangesCard({
             className="turn-changes__review"
             onClick={() => onOpen(turn, firstFile.path)}
           >
-            Review
+            {t("ui.review")}
           </button>
         ) : null}
       </header>
@@ -107,10 +107,12 @@ function FilePath({ path }: { readonly path: string }) {
 }
 
 function FileStats({ file }: { readonly file: TurnChangedFile }) {
+  const { t } = useTranslation();
+
   return file.lines ? (
     <LineStats lines={file.lines} />
   ) : (
-    <span className="turn-changes__stats turn-changes__binary">Binary</span>
+    <span className="turn-changes__stats turn-changes__binary">{t("ui.binary")}</span>
   );
 }
 
