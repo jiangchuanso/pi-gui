@@ -263,6 +263,7 @@ export const ja: Messages = {
   "ui.fork": "分岐",
   "ui.viewValueInChanges": "変更一覧で {filePath} を表示",
   "ui.copy": "コピー",
+  "ui.copied": "コピーしました",
   "ui.sessionTree": "セッションツリー",
   "ui.switchBranch": "分岐を切り替え",
   "ui.browseBranches": "分岐を参照",
@@ -500,6 +501,7 @@ export const ja: Messages = {
   "ui.workspaceTools": "ワークスペースのツール",
   "ui.closeValueTab": "{label} タブを閉じる",
   "ui.addTab": "タブを追加",
+  "ui.addTabWithShortcut": "タブを追加（{shortcut}）",
   "ui.retryRestoringTabs": "タブの復元を再試行",
   "ui.savedTabsAreUnavailableUntilRestorationSucceeds":
     "復元が完了するまで保存済みのタブは利用できません。",

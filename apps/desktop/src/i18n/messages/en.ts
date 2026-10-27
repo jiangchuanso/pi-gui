@@ -269,6 +269,7 @@ export const en = {
   "ui.fork": "Fork",
   "ui.viewValueInChanges": "View {filePath} in changes",
   "ui.copy": "Copy",
+  "ui.copied": "Copied",
   "ui.sessionTree": "Session tree",
   "ui.switchBranch": "Switch branch",
   "ui.browseBranches": "Browse branches",
@@ -508,6 +509,7 @@ export const en = {
   "ui.workspaceTools": "Workspace tools",
   "ui.closeValueTab": "Close {label} tab",
   "ui.addTab": "Add tab",
+  "ui.addTabWithShortcut": "Add tab ({shortcut})",
   "ui.retryRestoringTabs": "Retry restoring tabs",
   "ui.savedTabsAreUnavailableUntilRestorationSucceeds":
     "Saved tabs are unavailable until restoration succeeds.",
