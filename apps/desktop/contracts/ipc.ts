@@ -222,6 +222,8 @@ export const desktopIpc = {
   getSessionTree: "pi-gui:get-session-tree",
   navigateSessionTree: "pi-gui:navigate-session-tree",
   toggleWindowMaximize: "pi-gui:toggle-window-maximize",
+  minimizeWindow: "pi-gui:minimize-window",
+  closeWindow: "pi-gui:close-window",
   listWorkspaceFiles: "pi-gui:list-workspace-files",
   readWorkspaceFile: "pi-gui:read-workspace-file",
   revealWorkspaceFile: "pi-gui:reveal-workspace-file",
@@ -712,8 +714,16 @@ export function isCloseFocusedSurfaceShortcut(input: {
   return input.key.toLowerCase() === "w" || input.code === "KeyW";
 }
 
+/**
+ * Main passes this to the renderer when the window is frameless and the app
+ * must draw its own title bar with minimize, maximize and close (Linux).
+ */
+export const drawWindowControlsArgument = "--pi-draw-window-controls";
+
 export interface PiDesktopApi {
   platform: NodeJS.Platform;
+  /** True when the window has no native title bar and the app draws its own. */
+  drawsWindowControls: boolean;
   versions: NodeJS.ProcessVersions;
   ping(): Promise<string>;
   getState(): Promise<DesktopAppState>;
@@ -919,6 +929,8 @@ export interface PiDesktopApi {
   setReviewFileReviewed(input: SetReviewFileReviewedInput): Promise<SetReviewFileReviewedResult>;
   changeReviewFileStage(input: ChangeReviewFileStageInput): Promise<ChangeReviewFileStageResult>;
   toggleWindowMaximize(): Promise<void>;
+  minimizeWindow(): void;
+  closeWindow(): void;
   openExternal(url: string): Promise<void>;
   getThemeMode(): Promise<"system" | "light" | "dark">;
   getResolvedTheme(): Promise<"light" | "dark">;

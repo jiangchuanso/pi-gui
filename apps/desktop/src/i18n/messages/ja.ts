@@ -834,4 +834,14 @@ export const ja: Messages = {
   "scheduledTasks.editor.save": "保存",
   "queuedComposer.annotations": "{count}件の注釈",
   "turnChanges.editedFiles": "{count}個のファイルを編集",
+
+  // ウィンドウ操作と設定の共通アクション（上流の翻訳コアで追加）。
+  "settings.workspace.label": "ワークスペース",
+  "settings.common.cancel": "キャンセル",
+  "settings.common.edit": "編集",
+  "settings.common.remove": "削除",
+  "windowControls.label": "ウィンドウ操作",
+  "windowControls.minimize": "ウィンドウを最小化",
+  "windowControls.maximize": "ウィンドウを最大化または元に戻す",
+  "windowControls.close": "ウィンドウを閉じる",
 };

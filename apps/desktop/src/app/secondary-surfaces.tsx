@@ -18,8 +18,8 @@ import { CustomizePage } from "../features/extensions/customize-page";
 import { SettingsView, type SettingsSection } from "../features/settings/settings-view";
 import {
   CUSTOMIZE_SECTION_ID,
+  SETTINGS_SECTIONS,
   settingsNavItems,
-  settingsSections,
 } from "../features/settings/settings-sections";
 import { SettingsSelect } from "../features/settings/settings-controls";
 import type { McpSettingsActions } from "../features/settings/settings-mcp-section";
@@ -380,7 +380,7 @@ export function SecondarySurfaces({
   ) =>
     rootWorkspaceOptions.length > 0 ? (
       <SettingsSelect
-        label={t("app.workspaceEyebrow")}
+        label={t("settings.workspace.label")}
         options={rootWorkspaceOptions.map((workspace) => ({
           value: workspace.id,
           label: workspace.name,
@@ -400,9 +400,9 @@ export function SecondarySurfaces({
           if (!customizeTab) onSelectView("skills");
           return;
         }
-        const section = settingsSections(t).find((definition) => definition.id === id);
+        const section = SETTINGS_SECTIONS.find((definition) => definition.id === id);
         if (!section) return;
-        onSelectSettingsSection(section.id as SettingsSection);
+        onSelectSettingsSection(section.id);
         if (customizeTab) onSelectView("settings");
       }}
       testId={customizeTab ? `${customizeTab}-surface` : "settings-surface"}

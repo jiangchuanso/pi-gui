@@ -4,8 +4,8 @@
  * copy checks in tests/unit/i18n.spec.ts — derives from this list.
  */
 import { en, type Messages } from "./messages/en";
-import { zhCN } from "./messages/zh-CN";
 import { ja } from "./messages/ja";
+import { zhCN } from "./messages/zh-CN";
 
 export type { MessageKey, Messages } from "./messages/en";
 
@@ -14,15 +14,13 @@ export interface LocaleDefinition {
   readonly id: string;
   /** Shown in Settings, written in the language itself ("简体中文", not "Chinese"). */
   readonly label: string;
-  /** Copy for this locale. Keys may be missing while a translation is in progress. */
+  /**
+   * Copy for this locale. Only English must be complete: any key a locale leaves
+   * out renders the English copy, so a UI change never has to wait on translators.
+   */
   readonly messages: Partial<Messages>;
   /** Whether an OS language tag should select this locale, e.g. "zh-Hans-CN". */
   readonly matchesSystemTag: (languageTag: string) => boolean;
-  /**
-   * Marks a translation that is still being filled in. Only used by checks: a
-   * partial locale renders the missing strings from `defaultLocale` instead.
-   */
-  readonly partial?: boolean;
   /** Writing direction. Omit for left-to-right; set `"rtl"` for Arabic, Hebrew, … */
   readonly dir?: "ltr" | "rtl";
 }
@@ -32,10 +30,9 @@ export const defaultLocale = "en" as const;
 
 /**
  * To add a language, run `pnpm i18n:new <tag> "<label>"`: it writes the catalog file
- * and adds the entry below, marked `partial` so untranslated keys fall back instead of
- * failing `pnpm check`. By hand it is the same two edits — copy `messages/en.ts` to
- * `messages/<tag>.ts` and keep the keys, then import it below and add one entry here.
- * Nothing else needs to change; see ./AGENTS.md for the full workflow.
+ * and adds the entry below. By hand it is the same two edits — write
+ * `messages/<tag>.ts` as a `Partial<Messages>`, then import it below and add one entry
+ * here. Nothing else needs to change; see ./AGENTS.md for the full workflow.
  */
 export const LOCALES = [
   {

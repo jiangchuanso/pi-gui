@@ -1,4 +1,4 @@
-import { useTranslation, translate, type Translate } from "../../i18n";
+import { useTranslation, type Translate } from "../../i18n";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   CUSTOM_PROVIDER_ID_PATTERN,
@@ -108,7 +108,7 @@ export function SettingsCustomEndpointsSection({
                   type="button"
                   onClick={() => setDialog({ kind: "edit", original: entry })}
                 >
-                  {t("scheduledTasks.row.edit")}
+                  {t("settings.common.edit")}
                 </button>
                 <button
                   className="button button--secondary"
@@ -119,7 +119,7 @@ export function SettingsCustomEndpointsSection({
                     })
                   }
                 >
-                  {t("sidebar.workspace.remove")}
+                  {t("settings.common.remove")}
                 </button>
               </div>
             </div>
@@ -344,7 +344,8 @@ function CustomEndpointDialog({
             />
             <span className="settings-row__description">
               {t("ui.includeThe")}
-              <code>/v1</code> {t("ui.suffixOllama")}
+              <code>/v1</code>
+              {t("ui.suffixOllama")}
               <code>http://localhost:11434/v1</code>
               {t("ui.vllm")}
               <code>http://localhost:8000/v1</code>.
@@ -413,7 +414,7 @@ function CustomEndpointDialog({
               type="button"
               onClick={onClose}
             >
-              {t("scheduledTasks.editor.cancel")}
+              {t("settings.common.cancel")}
             </button>
             <button
               className="button"
@@ -524,7 +525,7 @@ function validateProviderId(
   candidate: string,
   existing: readonly string[],
   editing: string | undefined,
-  t: Translate = translate,
+  t: Translate,
 ): string | undefined {
   const trimmed = candidate.trim();
   if (!trimmed) {

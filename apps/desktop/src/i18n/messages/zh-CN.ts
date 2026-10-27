@@ -814,4 +814,14 @@ export const zhCN: Messages = {
   // 计数字段：中文只有 CLDR 的 other 一类，翻译基础 key 即可，无需 _one/_other。
   "queuedComposer.annotations": "{count} 处标注",
   "turnChanges.editedFiles": "已编辑 {count} 个文件",
+
+  // 窗口控件与设置页的通用操作（随上游翻译核心新增）。
+  "settings.workspace.label": "工作区",
+  "settings.common.cancel": "取消",
+  "settings.common.edit": "编辑",
+  "settings.common.remove": "移除",
+  "windowControls.label": "窗口控制",
+  "windowControls.minimize": "最小化窗口",
+  "windowControls.maximize": "最大化或还原窗口",
+  "windowControls.close": "关闭窗口",
 };

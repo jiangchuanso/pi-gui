@@ -982,6 +982,12 @@ export function registerDesktopIpc({
       window.maximize();
     }
   });
+  ipcMain.on(desktopIpc.minimizeWindow, (event) => {
+    senderWindow(windows, event).minimize();
+  });
+  ipcMain.on(desktopIpc.closeWindow, (event) => {
+    senderWindow(windows, event).close();
+  });
 }
 
 function registerTerminalIpc(windows: WindowOwner, capabilities: DesktopIpcCapabilities): void {

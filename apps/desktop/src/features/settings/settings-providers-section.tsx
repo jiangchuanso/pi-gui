@@ -126,7 +126,7 @@ export function SettingsProvidersSection({
 
       <section className="settings-section">
         <h3 className="settings-section__title">
-          {t("ui.connected")}
+          {t("ui.connected")}{" "}
           <span className="resource-list__count">{connectedProviders.length}</span>
         </h3>
         <p className="settings-section__description">
@@ -156,7 +156,7 @@ export function SettingsProvidersSection({
       <section className="settings-section">
         <div className="settings-section__header">
           <h3 className="settings-section__title">
-            {t("ui.available")}
+            {t("ui.available")}{" "}
             <span className="resource-list__count">{availableProviders.length}</span>
           </h3>
           <label className="resource-search">
@@ -282,7 +282,7 @@ function ProviderApiKeyDialog({
             type="button"
             onClick={onClose}
           >
-            {t("scheduledTasks.editor.cancel")}
+            {t("settings.common.cancel")}
           </button>
           {onRemove ? (
             <button

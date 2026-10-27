@@ -1,4 +1,4 @@
-import { useTranslation, translate, type Translate } from "../../i18n";
+import { useTranslation, type Translate } from "../../i18n";
 import { useCallback, useEffect, useState } from "react";
 import type {
   McpServerRecord,
@@ -187,7 +187,7 @@ function McpServerRow({
             type="button"
             onClick={onRemove}
           >
-            {t("sidebar.workspace.remove")}
+            {t("settings.common.remove")}
           </button>
         ) : null}
         <SettingsSwitch
@@ -202,7 +202,7 @@ function McpServerRow({
 }
 
 /** Removing deletes the whole entry, including the settings the list never shows. */
-export function removeServerQuestion(server: McpServerRecord, t: Translate = translate): string {
+export function removeServerQuestion(server: McpServerRecord, t: Translate): string {
   const question = t("mcp.remove", { name: server.name });
   return server.hasHiddenSettings ? t("mcp.removeHidden", { question: question }) : question;
 }

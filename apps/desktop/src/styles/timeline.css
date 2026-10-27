@@ -39,7 +39,7 @@
   min-height: 420px;
   background: transparent;
   position: relative;
-  max-height: calc(100vh - 320px);
+  max-height: calc(100vh - var(--window-titlebar-height) - 320px);
   overflow: auto;
   overflow-anchor: none;
   /* Programmatic timeline scrolls (opening a thread, jump-to-latest,

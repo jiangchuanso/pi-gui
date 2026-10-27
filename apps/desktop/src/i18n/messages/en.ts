@@ -874,6 +874,16 @@ export const en = {
   "turnChanges.editedFiles": "Edited {count} files",
   "turnChanges.editedFiles_one": "Edited {count} file",
   "turnChanges.editedFiles_other": "Edited {count} files",
+
+  // Window chrome and the shared Settings actions, added by the upstream core.
+  "settings.workspace.label": "Workspace",
+  "settings.common.cancel": "Cancel",
+  "settings.common.edit": "Edit",
+  "settings.common.remove": "Remove",
+  "windowControls.label": "Window controls",
+  "windowControls.minimize": "Minimize window",
+  "windowControls.maximize": "Maximize or restore window",
+  "windowControls.close": "Close window",
 } as const;
 
 export type MessageKey = keyof typeof en;

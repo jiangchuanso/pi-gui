@@ -7,8 +7,9 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { defaultLocale, languageTagParts, textDirectionFor, type AppLocale } from "./catalog";
+import { defaultLocale, textDirectionFor, type AppLocale } from "./catalog";
 import {
+  LOCALE_STORAGE_KEY,
   detectSystemLanguages,
   readStoredLocale,
   resolveLocale,
@@ -74,7 +75,26 @@ export function I18nProvider({
   const [preference, setPreferenceState] = useState<LocalePreference>(
     () => initialPreference ?? readStoredLocale(),
   );
-  const locale = useMemo(() => resolveLocale(preference, detectSystemLanguages()), [preference]);
+  const [systemLanguages, setSystemLanguages] = useState(detectSystemLanguages);
+  const locale = useMemo(
+    () => resolveLocale(preference, systemLanguages),
+    [preference, systemLanguages],
+  );
+
+  useEffect(() => {
+    // Every window keeps its own copy of the preference, so follow a choice made in
+    // another window, and an OS language change while the preference is "system".
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === LOCALE_STORAGE_KEY) setPreferenceState(readStoredLocale());
+    };
+    const onLanguageChange = () => setSystemLanguages(detectSystemLanguages());
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("languagechange", onLanguageChange);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("languagechange", onLanguageChange);
+    };
+  }, []);
 
   const setPreference = useCallback((next: LocalePreference) => {
     writeStoredLocale(next);

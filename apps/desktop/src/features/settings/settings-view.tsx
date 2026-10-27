@@ -100,13 +100,15 @@ export function SettingsView({
   mcpActions,
 }: SettingsViewProps) {
   const { t } = useTranslation();
-  const definition = settingsSectionDefinition(section, t);
+  const definition = settingsSectionDefinition(section);
   const header = (
     <header className="view-header">
       <div>
-        <h1 className="view-header__title">{definition.title}</h1>
+        <h1 className="view-header__title">{t(definition.titleKey)}</h1>
         <p className="view-header__body">
-          {definition.description(workspace?.name ?? t("settings.thisWorkspace"))}
+          {t(definition.descriptionKey, {
+            workspace: workspace?.name ?? t("settings.thisWorkspace"),
+          })}
         </p>
       </div>
       {headerAccessory ? <div className="view-header__actions">{headerAccessory}</div> : null}

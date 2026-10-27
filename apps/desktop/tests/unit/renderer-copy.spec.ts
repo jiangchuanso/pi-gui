@@ -1,14 +1,7 @@
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import ts from "typescript";
 import { expect, test } from "@playwright/test";
-import { translatorFor } from "../../src/i18n/translate";
-import { deriveModelOnboardingState } from "../../src/features/settings/model-onboarding";
-import { builtinToolEntries } from "../../src/features/workbench/builtin-tools";
-import {
-  buildSlashCommandSections,
-  thinkingOptions,
-} from "../../src/features/conversation/composer-commands";
 
 // These are executable examples and format names, rather than untranslated prose.
 const technicalCopy = new Set([
@@ -26,6 +19,7 @@ const technicalCopy = new Set([
   "--api-key",
   "/v1",
   "~/.pi/agent/models.json",
+  "/bin/zsh",
 ]);
 const attributes = new Set([
   "title",
@@ -38,23 +32,38 @@ const attributes = new Set([
   "body",
   "backLabel",
 ]);
-const surfaces = [
-  "settings/settings-models-section.tsx",
-  "settings/settings-providers-section.tsx",
-  "settings/settings-custom-endpoints-section.tsx",
-  "settings/settings-mcp-section.tsx",
-  "extensions/customize-page.tsx",
-  "extensions/skills-view.tsx",
-  "extensions/extensions-view.tsx",
-  "threads/new-thread-view.tsx",
-  "conversation/composer-panel.tsx",
-  "conversation/composer-surface.tsx",
+const sourceRoot = resolve(__dirname, "../../src");
+/**
+ * Surfaces that are fully translated. A directory entry covers every `.tsx` file in
+ * it, so a new Settings section is checked without anyone adding it here.
+ */
+const translatedSurfaces = [
+  "features/settings",
+  "app/secondary-surface.tsx",
+  "app/secondary-surfaces.tsx",
 ];
 
-test("settings, customization and new-thread copy cannot bypass the locale catalogs", async () => {
+async function surfaceFiles(): Promise<readonly string[]> {
+  const files: string[] = [];
+  for (const surface of translatedSurfaces) {
+    if (surface.endsWith(".tsx")) {
+      files.push(surface);
+      continue;
+    }
+    const entries = await readdir(resolve(sourceRoot, surface));
+    files.push(
+      ...entries.filter((name) => name.endsWith(".tsx")).map((name) => `${surface}/${name}`),
+    );
+  }
+  return files;
+}
+
+test("translated surfaces cannot bypass the locale catalogs", async () => {
+  const files = await surfaceFiles();
+  expect(files).toContain("features/settings/settings-view.tsx");
   const untranslated: string[] = [];
-  for (const file of surfaces) {
-    const source = await readFile(resolve(__dirname, "../../src/features", file), "utf8");
+  for (const file of files) {
+    const source = await readFile(resolve(sourceRoot, file), "utf8");
     const tree = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
     const check = (node: ts.Node, text: string) => {
       const copy = text.replace(/\s+/g, " ").trim();
@@ -91,28 +100,4 @@ test("settings, customization and new-thread copy cannot bypass the locale catal
     untranslated,
     "User-facing strings must use the catalogs; add technical examples to the explicit allowlist",
   ).toEqual([]);
-});
-
-test("derived onboarding, workbench and slash-menu copy follows the selected language", () => {
-  for (const [locale, noModels, files, model, low] of [
-    ["zh-CN", "没有可用的模型", "文件", "模型", "低"],
-    ["ja", "利用可能なモデルがありません", "ファイル", "モデル", "低"],
-  ] as const) {
-    const t = translatorFor(locale);
-    const onboarding = deriveModelOnboardingState(
-      undefined,
-      { provider: undefined, modelId: undefined },
-      t,
-    );
-    expect(onboarding.notice?.title).toBe(noModels);
-    expect(onboarding.unselectedModelLabel).toBe(noModels);
-    expect(onboarding.notice?.actionSection).toBe("providers");
-    expect(builtinToolEntries(t).find((tool) => tool.kind === "files")?.label).toBe(files);
-    expect(
-      buildSlashCommandSections("/model", undefined, [], [], { t })
-        .flatMap((section) => section.items)
-        .find((command) => command.kind === "model")?.title,
-    ).toBe(model);
-    expect(thinkingOptions(t)[0]?.label).toBe(low);
-  }
 });

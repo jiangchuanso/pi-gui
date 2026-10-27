@@ -58,8 +58,8 @@ function pluralRulesFor(locale: AppLocale): Intl.PluralRules {
  *
  * The locale's own copy wins at every step — its plural form first, then its plain
  * message — so a language with a single plural category (Chinese, Japanese) can
- * translate the plain key alone and still read correctly at every count. English
- * only fills in what the locale never translated.
+ * translate the plain key alone and still read correctly at every count. When the
+ * locale has no copy at all, English fills in with its own plural rules.
  */
 function resolvePluralMessage(
   catalog: Partial<Messages>,
@@ -67,13 +67,28 @@ function resolvePluralMessage(
   locale: AppLocale,
   count: number,
 ): string | undefined {
-  const variant = pluralVariantKey(key, pluralRulesFor(locale).select(count)) as MessageKey;
-  return catalog[variant] ?? catalog[key] ?? fallbackMessages[variant] ?? fallbackMessages[key];
+  const variant = pluralVariantKey(key, pluralRulesFor(locale).select(count)) as keyof Messages;
+  const own = catalog[variant] ?? catalog[key];
+  if (own !== undefined) {
+    return own;
+  }
+  // English copy takes English plural rules: Chinese reads every count as "other",
+  // which would render "1 models".
+  const fallbackVariant = pluralVariantKey(
+    key,
+    pluralRulesFor(defaultLocale).select(count),
+  ) as keyof Messages;
+  return fallbackMessages[fallbackVariant] ?? fallbackMessages[key];
 }
 
-/** A translator bound to one locale. */
-export function translatorFor(locale: AppLocale): Translate {
-  const catalog = catalogs[locale];
+/**
+ * A translator bound to one locale. `catalog` defaults to the registered copy; specs
+ * pass a smaller one to exercise the English fallback.
+ */
+export function translatorFor(
+  locale: AppLocale,
+  catalog: Partial<Messages> = catalogs[locale],
+): Translate {
   return (key, params) => {
     const count = params?.count;
     if (typeof count === "number") {

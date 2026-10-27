@@ -28,6 +28,7 @@ import { DesktopAppStore } from "./application/app-store";
 import { TOOL_IMAGE_SCHEME } from "../contracts/tool-output-images";
 import { WindowOwner } from "./windows/window-owner";
 import { PendingComposerDraftFlusher } from "./windows/pending-draft-flush";
+import { windowChromeArguments, windowChromeOptions } from "./windows/window-chrome";
 import { TurnCheckpointStore } from "./workbench/checkpoint-store";
 import {
   DesktopExtensionViewOwner,
@@ -474,10 +475,8 @@ function createWindow(): BrowserWindow {
     minHeight: 600,
     transparent: enableTransparency,
     vibrancy: process.platform === "darwin" && enableTransparency ? "under-window" : undefined,
-    titleBarStyle: "hiddenInset",
-    autoHideMenuBar: process.platform !== "darwin",
+    ...windowChromeOptions(process.platform),
     backgroundColor: enableTransparency ? "#00000000" : currentWindowBackground(),
-    trafficLightPosition: { x: 18, y: 18 },
     show: false,
     icon: appIcon,
     webPreferences: {
@@ -487,6 +486,7 @@ function createWindow(): BrowserWindow {
       sandbox: true,
       // Keep hidden test windows responsive so Playwright exercises the same UI flows.
       backgroundThrottling: !backgroundTestMode,
+      additionalArguments: windowChromeArguments(process.platform),
     },
   });
 
