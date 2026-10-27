@@ -67,7 +67,13 @@ function validateCiWorkflow(workflow) {
   );
 
   const linuxJob = workflow.jobs?.["desktop-package-linux"];
-  assert(linuxJob?.["runs-on"] === "ubuntu-latest", "Linux package CI must run on Ubuntu");
+  // A pinned `ubuntu-24.04` is still Ubuntu: the job may name the image so the
+  // packaging toolchain and the glibc it links against cannot drift with `latest`.
+  const linuxRunner = linuxJob?.["runs-on"];
+  assert(
+    typeof linuxRunner === "string" && /^ubuntu-(latest|\d{2}\.\d{2})$/.test(linuxRunner),
+    "Linux package CI must run on Ubuntu",
+  );
   assert(
     runText(stepNamed(linuxJob, "Verify Linux package configuration")).includes(
       "verify:release-config",
