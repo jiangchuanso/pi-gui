@@ -172,7 +172,12 @@ jobs:
           if-no-files-found: error
 
   desktop-package-linux:
-    runs-on: ubuntu-latest
+    # `ubuntu-latest` rolled over to 26.04, whose glibc is newer than the libraries
+    # electron-builder's bundled AppImage tools ship: mksquashfs then calls host
+    # binaries that need a newer glibc than the tools' own lib directory provides.
+    # Pin the image the packages are built on so that toolchain, and the glibc the
+    # AppImage links against, stay stable for the Kylin baseline.
+    runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@v7

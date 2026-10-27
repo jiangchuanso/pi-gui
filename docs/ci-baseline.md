@@ -81,7 +81,10 @@ after native install/launch verification on the matching architecture. The arm64
 candidate is built inside a Debian 11 (glibc 2.31) container so the compiled
 `node-pty` native module loads on Kylin V10 SP1, whose glibc is 2.31; the
 `verify-linux-glibc-baseline` guard fails the job if any packaged ELF needs a
-newer glibc than that baseline.
+newer glibc than that baseline. The x64 job pins `ubuntu-24.04` instead of
+`ubuntu-latest`: electron-builder's AppImage tools bundle libraries older than the
+glibc `ubuntu-latest` moved to, so `mksquashfs` fails there, and pinning also keeps
+the glibc the AppImage is built against from drifting with the runner image.
 
 Packaging runs on pushes to `main` and on an explicit `workflow_dispatch`, never
 on tag pushes. A tag names a commit `main` already packaged, so filtering tags
