@@ -45,6 +45,7 @@ import { CommandPaletteSurface } from "../features/command-palette/command-palet
 import { deriveModelOnboardingState } from "../features/settings/model-onboarding";
 import type { SettingsSection } from "../features/settings/settings-view";
 import { SecondarySurfaces } from "./secondary-surfaces";
+import { StartupDiagnostics } from "./startup-diagnostics";
 import { NewThreadView } from "../features/threads/new-thread-view";
 import {
   buildThreadSidebarModel,
@@ -1058,26 +1059,7 @@ export default function App() {
           ) : null}
         </Topbar>
 
-        {snapshot.startupDiagnostics.length > 0 ? (
-          <div className="startup-diagnostics" role="status" data-testid="startup-diagnostics">
-            <strong>{t("app.startupDiagnostics.title")}</strong>
-            <span>
-              {snapshot.startupDiagnostics
-                .map((diagnostic) => {
-                  const workspaceName = diagnostic.workspacePath
-                    ?.split(/[\\/]/)
-                    .filter(Boolean)
-                    .at(-1);
-                  return workspaceName
-                    ? t("app.startupDiagnostics.workspaceUnavailable", {
-                        workspace: workspaceName,
-                      })
-                    : diagnostic.message;
-                })
-                .join(" ")}
-            </span>
-          </div>
-        ) : null}
+        <StartupDiagnostics diagnostics={snapshot.startupDiagnostics} />
 
         <>
           {snapshot.activeView === "scheduled" ? (
