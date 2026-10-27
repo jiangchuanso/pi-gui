@@ -180,7 +180,7 @@ function TimelineMessage({
           ) : null}
           {crossProject ? (
             <div className="timeline-item__project-origin" data-testid="message-project-origin">
-              From project {crossProject.project}
+              {t("ui.fromProject", { project: crossProject.project })}
             </div>
           ) : null}
           <div className="timeline-item__bubble">

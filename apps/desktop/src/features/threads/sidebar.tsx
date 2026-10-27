@@ -1682,7 +1682,11 @@ const ThreadSessionRow = forwardRef<HTMLDivElement, ThreadSessionRowProps>(
             <button
               type="button"
               className="session-row__tree-toggle"
-              aria-label={`${childrenOpen ? "Collapse" : "Expand"} children of ${thread.session.title}`}
+              aria-label={
+                childrenOpen
+                  ? t("sidebar.collapseChildren", { title: thread.session.title })
+                  : t("sidebar.expandChildren", { title: thread.session.title })
+              }
               aria-expanded={childrenOpen}
               onClick={(event) => {
                 event.stopPropagation();
@@ -1835,7 +1839,7 @@ const ThreadSessionRow = forwardRef<HTMLDivElement, ThreadSessionRowProps>(
             className="session-tree__children"
             data-parent-session-id={thread.session.id}
             role="group"
-            aria-label={`Children of ${thread.session.title}`}
+            aria-label={t("sidebar.childrenGroup", { title: thread.session.title })}
           >
             {children.map((child) => (
               <HistoryThreadRow
