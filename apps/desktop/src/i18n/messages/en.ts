@@ -871,6 +871,7 @@ export const en = {
   "queuedComposer.annotations": "{count} annotations",
   "queuedComposer.annotations_one": "{count} annotation",
   "queuedComposer.annotations_other": "{count} annotations",
+  "queuedComposer.fromProject": "From project {project} · {body}",
   "turnChanges.editedFiles": "Edited {count} files",
   "turnChanges.editedFiles_one": "Edited {count} file",
   "turnChanges.editedFiles_other": "Edited {count} files",

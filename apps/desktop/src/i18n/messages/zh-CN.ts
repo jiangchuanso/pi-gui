@@ -806,6 +806,7 @@ export const zhCN: Messages = {
 
   // 计数字段：中文只有 CLDR 的 other 一类，翻译基础 key 即可，无需 _one/_other。
   "queuedComposer.annotations": "{count} 处标注",
+  "queuedComposer.fromProject": "来自项目 {project} · {body}",
   "turnChanges.editedFiles": "已编辑 {count} 个文件",
 
   // 窗口控件与设置页的通用操作（随上游翻译核心新增）。

@@ -200,6 +200,51 @@ export interface OrchestrationChildThread {
   readonly updatedAt: string;
 }
 
+/**
+ * One parent/child link as the window draws it: ids, title and status only, never the
+ * child's goal, transcript or evidence. Main derives these from orchestrationChildren.
+ */
+export interface ChildThreadLink {
+  readonly id: string;
+  readonly parentWorkspaceId: string;
+  readonly parentSessionId: string;
+  readonly childWorkspaceId: string;
+  readonly childSessionId: string;
+  readonly title: string;
+  readonly status: OrchestrationChildThreadStatus;
+}
+
+/** Derives the links, returning `previous` when nothing the window draws has changed. */
+export function childThreadLinksOf(
+  children: readonly OrchestrationChildThread[],
+  previous: readonly ChildThreadLink[] = [],
+): readonly ChildThreadLink[] {
+  const same =
+    children.length === previous.length &&
+    children.every((child, index) => {
+      const link = previous[index]!;
+      return (
+        link.id === child.id &&
+        link.parentWorkspaceId === child.parentWorkspaceId &&
+        link.parentSessionId === child.parentSessionId &&
+        link.childWorkspaceId === child.childWorkspaceId &&
+        link.childSessionId === child.childSessionId &&
+        link.title === child.title &&
+        link.status === child.status
+      );
+    });
+  if (same) return previous;
+  return children.map((child) => ({
+    id: child.id,
+    parentWorkspaceId: child.parentWorkspaceId,
+    parentSessionId: child.parentSessionId,
+    childWorkspaceId: child.childWorkspaceId,
+    childSessionId: child.childSessionId,
+    title: child.title,
+    status: child.status,
+  }));
+}
+
 export interface SendChildThreadFollowUpInput {
   readonly childThreadId: string;
   readonly text: string;
@@ -446,7 +491,12 @@ export interface DesktopAppState {
   readonly extensionFlagsByWorkspace: Readonly<Record<string, ExtensionFlagValues>>;
   /** Flag values each thread's pi session started with (only the ones pi receives). */
   readonly extensionFlagsBySession: Readonly<Record<string, ExtensionFlagValues>>;
+  /**
+   * Main's full child records, transcripts included. Window state pushes leave this
+   * empty; the window reads childThreadLinks instead.
+   */
   readonly orchestrationChildren: readonly OrchestrationChildThread[];
+  readonly childThreadLinks: readonly ChildThreadLink[];
   readonly scheduledTasks: readonly ScheduledTaskRecord[];
   readonly notificationPreferences: NotificationPreferences;
   readonly integratedTerminalShell: string;
@@ -499,6 +549,7 @@ export function createEmptyDesktopAppState(): DesktopAppState {
     extensionFlagsByWorkspace: {},
     extensionFlagsBySession: {},
     orchestrationChildren: [],
+    childThreadLinks: [],
     scheduledTasks: [],
     notificationPreferences: {
       backgroundCompletion: true,

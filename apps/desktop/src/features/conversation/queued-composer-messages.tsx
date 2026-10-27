@@ -3,8 +3,16 @@ import { useTranslation, type Translate } from "../../i18n";
 import { FileIcon } from "../../ui/icons";
 import { ImageAttachmentThumb } from "./image-attachment-thumb";
 import { parseAnnotatedPrompt } from "./annotations/annotation-prompt";
+import { parseCrossProjectMessage } from "../../../contracts/thread-message";
 
 function queuedPreview(text: string, t: Translate): string {
+  const crossProject = parseCrossProjectMessage(text);
+  if (crossProject) {
+    return t("queuedComposer.fromProject", {
+      project: crossProject.project,
+      body: crossProject.body.trim(),
+    });
+  }
   const annotated = parseAnnotatedPrompt(text);
   if (!annotated) return text;
   const label = t("queuedComposer.annotations", { count: annotated.annotations.length });
@@ -60,8 +68,9 @@ export function QueuedComposerMessages({
                   {t("ui.steer")}
                 </button>
               ) : null}
-              {/* Its annotations cannot be reattached to the transcript, so it is not editable. */}
-              {parseAnnotatedPrompt(message.text) ? null : (
+              {/* Annotations cannot be reattached, and an origin header must stay intact. */}
+              {parseAnnotatedPrompt(message.text) ||
+              parseCrossProjectMessage(message.text) ? null : (
                 <button type="button" onClick={() => onEditMessage(message.id)}>
                   {t("scheduledTasks.row.edit")}
                 </button>

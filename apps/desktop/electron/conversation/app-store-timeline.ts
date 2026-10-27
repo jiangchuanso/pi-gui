@@ -17,8 +17,10 @@ import {
   makeTranscriptMessageWithAttachments,
 } from "../application/app-store-utils";
 import {
+  archiveChildThreadsToolName,
   createChildThreadToolName,
   listThreadsToolName,
+  orchestrationToolNames,
   readThreadToolName,
   sendMessageToThreadToolName,
 } from "../orchestration/orchestration-runtime";
@@ -228,11 +230,13 @@ export function applyTimelineEvent(
       };
       metrics.toolCount += 1;
       const extensionLabel = state.extensionToolLabels(event.sessionRef).get(event.toolName);
-      // An extension's tool is counted as a tool: its name says nothing about files or searches.
-      if (extensionLabel === undefined && looksLikeSearch(event.toolName, event.input)) {
+      // Extension and thread tools count as tools: their names say nothing about files or searches.
+      const nameHeuristics =
+        extensionLabel === undefined && !orchestrationToolNames.has(event.toolName);
+      if (nameHeuristics && looksLikeSearch(event.toolName, event.input)) {
         metrics.searchCount += 1;
       }
-      if (extensionLabel === undefined && looksLikeFileExplore(event.toolName, event.input)) {
+      if (nameHeuristics && looksLikeFileExplore(event.toolName, event.input)) {
         metrics.fileCount += 1;
       }
       state.runMetricsBySession.set(key, metrics);
@@ -438,6 +442,9 @@ function toolLabel(toolName: string, input: unknown): string {
   }
   if (toolName === sendMessageToThreadToolName) {
     return detail ? `Sent message to thread: ${detail}` : "Sent message to thread";
+  }
+  if (toolName === archiveChildThreadsToolName) {
+    return "Archived child threads";
   }
   if (looksLikeSearch(toolName, input)) {
     return detail ? `Searched ${detail}` : `Searched with ${toolName}`;

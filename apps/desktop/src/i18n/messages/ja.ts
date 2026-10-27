@@ -826,6 +826,7 @@ export const ja: Messages = {
   "scheduledTasks.editor.cancel": "キャンセル",
   "scheduledTasks.editor.save": "保存",
   "queuedComposer.annotations": "{count}件の注釈",
+  "queuedComposer.fromProject": "プロジェクト {project} から · {body}",
   "turnChanges.editedFiles": "{count}個のファイルを編集",
 
   // ウィンドウ操作と設定の共通アクション（上流の翻訳コアで追加）。

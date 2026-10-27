@@ -13,6 +13,7 @@ import type {
   TimelineWorkingIndicator,
 } from "../../../contracts/timeline-types";
 import type { ScheduledTaskOrigin } from "../../../contracts/scheduled-tasks";
+import { parseCrossProjectMessage } from "../../../contracts/thread-message";
 import { extensionToolRowLabel } from "../../../contracts/tool-labels";
 import { useExtensionToolLabel } from "../extensions/extension-tool-labels";
 import { useRunningLabel } from "./hooks/use-running-label";
@@ -149,6 +150,10 @@ function TimelineMessage({
   const { t } = useTranslation();
 
   const articleRef = useRef<HTMLElement | null>(null);
+  const crossProject = useMemo(
+    () => (item.role === "user" ? parseCrossProjectMessage(item.text) : null),
+    [item.role, item.text],
+  );
   const annotated = useMemo(
     () => (item.role === "user" ? parseAnnotatedPrompt(item.text) : null),
     [item.role, item.text],
@@ -164,13 +169,18 @@ function TimelineMessage({
     ) : null;
 
   if (item.role === "user") {
-    const body = annotated ? annotated.body : item.text;
+    const body = annotated ? annotated.body : (crossProject?.body ?? item.text);
     return (
       <article className="timeline-item timeline-item--user" ref={articleRef}>
         <div className="timeline-item__user-stack">
           {scheduledOrigin ? (
             <div className="timeline-item__scheduled-origin" data-testid="sent-by-scheduled-task">
               {t("ui.sentByScheduledTask")}
+            </div>
+          ) : null}
+          {crossProject ? (
+            <div className="timeline-item__project-origin" data-testid="message-project-origin">
+              From project {crossProject.project}
             </div>
           ) : null}
           <div className="timeline-item__bubble">
