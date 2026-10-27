@@ -201,13 +201,14 @@ export function Workbench({
           })}
         </div>
         <button
+          aria-keyshortcuts={`${platform === "darwin" ? "Meta" : "Control"}+T`}
           aria-label={t("ui.addTab")}
           className="workbench__add icon-button"
           data-testid="workbench-add-tab"
           disabled={loading}
           onClick={onShowChooser}
           ref={addRef}
-          title={t("ui.addTab")}
+          title={t("ui.addTabWithShortcut", { shortcut: formatShortcut(platform, "T") })}
           type="button"
         >
           <PlusIcon />

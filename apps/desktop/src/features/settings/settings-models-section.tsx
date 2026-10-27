@@ -53,8 +53,7 @@ export function SettingsModelsSection({
   const savedPatterns = runtime?.settings.enabledModelPatterns ?? [];
   const activePatterns =
     savedPatterns.length === 0 ? availableModels.map(modelPattern) : savedPatterns;
-  const activeSet = new Set(activePatterns);
-  const enabledModels = availableModels.filter((model) => activeSet.has(modelPattern(model)));
+  const enabledModels = availableModels.filter((model) => model.scope !== "off");
 
   const defaultProvider = runtime?.settings.defaultProvider;
   const defaultModelId = runtime?.settings.defaultModelId;
@@ -153,7 +152,7 @@ export function SettingsModelsSection({
           ) : (
             visibleAvailable.map((model) => {
               const pattern = modelPattern(model);
-              const enabled = activeSet.has(pattern);
+              const enabled = model.scope !== "off";
               return (
                 <ModelRow
                   isDefault={
@@ -164,7 +163,7 @@ export function SettingsModelsSection({
                 >
                   <SettingsSwitch
                     checked={enabled}
-                    disabled={enabled && activePatterns.length <= 1}
+                    disabled={enabled && (activePatterns.length <= 1 || model.scope === "matched")}
                     label={t("ui.enableValue5", { pattern: pattern })}
                     onChange={(next) => setEnabled(pattern, next)}
                   />
